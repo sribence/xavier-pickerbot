@@ -1,5 +1,7 @@
 # Saját projekt #3 — kézi vezérlés (bázis + kar)
 
+**Friss állapot 2026-09-18, két rebootpróba után:** a duplán indult bringup, a hibás `senior_mec_bs` mód és a rosbridge/master indulási versenye rendezve. Egy `mini_mec_moveit_four` bringup fut; a `/wheeltec_robot` válaszol, `/odom`, `/imu` és `/PowerVoltage` friss. A feszültség 23,33 V körüli volt. A lentebb olvasható sikeres `/cmd_vel` és `/arm_cmd` mozgáspróbák **korábbi állapotra** vonatkoznak; a mostani helyreállítás során nem küldtünk mozgásparancsot. A régi `start_feeds.sh` szkriptet ne indítsd a systemd-szolgáltatások mellé. Részletek: [10-bemutato-terkep.md](10-bemutato-terkep.md).
+
 **Építve: 2026-09-18, robot offline (SSH nem elérhető) — semmi ebből nem lett élő roboton tesztelve.** Célja: a meglévő, csak-megfigyelő [05-sajat-projekt-iranyitopult.md](05-sajat-projekt-iranyitopult.md) irányítópult kiegészítése tényleges bázis- és kar-vezérléssel, ugyanazzal a biztonsági doktrínával, mint amit a testvér-repóban ([NERO_GO2](../) fő projekt, Go2 négylábú) a `docker/web_dashboard/joint_safety.py` + `lowcmd_sender.py` mock/real-split párra építettünk.
 
 **FONTOS:** ez a robot **nem** a Go2 négylábú. Mecanum-alváz + 4 DOF kar, ROS1 Noetic (nem DDS/LowCmd). A Go2 ízület-számokat, sebesség-plafonokat sehol nem vettük át — minden itt szereplő szám ezen a roboton, ehhez a hajtáshoz lett (óvatosan) kitalálva, vagy explicit PLACEHOLDER-ként jelölve.
@@ -42,7 +44,7 @@ Ha az első élő teszten a robot gyorsabban mozog a vártnál ezekkel az érté
 
 Ne kezdd el ezt a listát, amíg nincs valaki a robot közelében, aki fizikailag el tudja kapcsolni az áramot (tápkapcsoló/battery), és amíg nincs meg a `rostopic`-os megerősítés.
 
-1. **SSH-kapcsolat + roscore él.** `ssh -i ~/.ssh/pickerbot_mini wheeltec@192.168.123.50`, ellenőrizd, hogy `roscore` fut (vagy indítsd el `scripts/start_feeds.sh`-val, ami már úgyis elindítja).
+1. **SSH-kapcsolat + ROS master él.** `ssh -i ~/.ssh/pickerbot_mini wheeltec@192.168.123.50`, majd `rosparam get /run_id` paranccsal ellenőrizd a már futó mastert. A `scripts/start_feeds.sh` külön `roscore` és rosbridge folyamatot is indít, ezért a jelenlegi systemd-szolgáltatások mellett ne futtasd.
 2. **`/cmd_vel` MEGLÉTÉNEK ellenőrzése ELŐSZÖR, mielőtt bármit küldenél:**
    ```bash
    rostopic list | grep cmd_vel
@@ -50,11 +52,11 @@ Ne kezdd el ezt a listát, amíg nincs valaki a robot közelében, aki fizikaila
    ```
    Ha a topic neve vagy típusa más, mint `geometry_msgs/Twist` a `/cmd_vel` néven, **állj meg** — `base_drive.py` és `control_panel.html` mindkettő ezt a nevet/típust feltételezi, nem megerősítve. Ha eltér, előbb ezt kell javítani a kódban, nem ráerőltetni a robotra.
 3. **Fizikai E-stop/kéz a tápkapcsolón.** Valaki álljon a robot mellett úgy, hogy egy mozdulattal le tudja kapcsolni az áramot (barrel jack / battery kapcsoló), mielőtt az első parancs kimegy.
-4. **Nyisd meg `scripts/control_panel.html`-t** `python -m http.server 8901`-ről (ne `file://`), és ellenőrizd, hogy a `globalStatus` "rosbridge: csatlakozva"-t mutat.
-5. **NE élesíts azonnal.** Előbb figyeld pár másodpercig a naplót MOCK módban (élesítés nélkül) — minden gombnyomás "MOCK (nincs élesítve)" sort ír, ellenőrizd, hogy az irányok logikusak (előre=x+, balra strafe=y+, stb.), mielőtt bármi kimenne a robotra.
-6. **Élesítés minimális sebességgel.** Kattints az ÉLESÍTÉS gombra (megerősítő dialógus jön), majd **rövid, kis nyomásokkal** próbáld ki egyenként az irányokat — ne tartsd lenyomva hosszan az első próbánál.
-7. **E-STOP gomb / szóköz-billentyű reflex.** Az E-stop gomb azonnal nulla Twist-et küld és leélesít — próbáld ki ezt is tudatosan, mielőtt bármilyen komolyabb mozgást kérnél.
-8. **Karvezérlés valós bekapcsolása NEM ezen a listán van.** A kar addig marad szimuláció-only, amíg valaki nem olvassa le a valós ízület-határokat a `mini_mec_four_arm_moveit_config`-ból (vagy élő `rosparam`/`rostopic`/`rosservice` hívásokkal a running MoveIt node-okról), és be nem írja azokat `arm_control.py`-ba a `PLACEHOLDER` jelölés törlésével együtt — külön, tudatos lépésként, nem ennek a dokumentumnak a részeként.
+4. **Nyisd meg a helyi vezérlőpultot** a `scripts/start-demo-view.ps1` indítóval (`http://127.0.0.1:8902/scripts/control_panel.html`, ne `file://`), és ellenőrizd, hogy a fejléc „rosbridge: csatlakozva” állapotot mutat. A robot 8901-es weboldala egy régebbi változat.
+5. **NE élesíts azonnal.** Előbb figyeld a naplót MOCK módban (élesítés nélkül): a gombnyomások nem küldenek `/cmd_vel` parancsot. Ellenőrizd, hogy az irányok logikusak (előre=x+, balra strafe=y+, stb.).
+6. **Első felügyelt bázispróba:** a fizikai leállító mellett álló személlyel, szabad kerekekkel, rendezett kábelekkel kattints az ÉLESÍTÉS gombra, majd csak rövid nyomásokkal próbáld az irányokat. A sebességplafon nem mért hardverhatár.
+7. **Megállítás:** a „WEBES MEGÁLLÍTÁS” nulla Twist-et próbál küldeni és leélesít. A hálózat vagy a driver késése miatt ez nem vészleállító: veszély esetén a fizikai leállítót használd. A szóköz nincs megállító billentyűként bekötve.
+8. **Karvezérlés valós bekapcsolása NEM ezen a listán van.** Az ízületek URDF-határa ismert, de a 2026-09-19-i darálás és sípolás miatt a kart előbb áramtalanítva fizikailag át kell vizsgálni. A webes karpanel szimuláció marad.
 
 ## Amit ez a projekt NEM csinál
 
@@ -81,7 +83,7 @@ Indított bringup: `roslaunch turn_on_wheeltec_robot turn_on_wheeltec_robot.laun
 
 ## Nyitott kérdés (bázis) — LEZÁRVA 2026-09-18
 
-`/cmd_vel` léte/típusa most már élőben megerősítve (lásd fent) — a bázis-vezérlés `control_panel.html`-ben biztonságosan élesíthető, a dokumentált Első élő teszt eljárással (minimum sebesség, E-stop kéznél).
+`/cmd_vel` léte és típusa élőben megerősítve (lásd fent). A későbbi LAN-kábeles incidens bizonyította, hogy a webes megállításra nem szabad vészleállítóként támaszkodni. Az éles bázispróbához a fenti felügyelt eljárás és a fizikai leállító szükséges.
 
 ## Fizikai incidens — 2026-09-18, harmadik session (LAN-port tönkrement)
 
@@ -123,3 +125,19 @@ Futtatás (Windows terminálból, `-t` kötelező a pty-allokációhoz):
 ```
 ssh -t -i ~/.ssh/pickerbot_mini wheeltec@192.168.123.50 "source /opt/ros/noetic/setup.bash; python3 /home/wheeltec/arm_jog.py"
 ```
+
+## 2026-09-19: joystickkel előidézett karhiba, újraindítás után is
+
+A felhasználó szerint a robot földre helyezése után a korábban lelógó kar nem emelkedett fel a várt helyzetbe. A fizikai joystick egyik irányában a kar a mechanikai határon túl akar menni: daráló hang és sípolás hallatszik. Ezután a fel-le irányú mozgás nem normális; újraindítás után is jelentkezik. A felhasználó a talp fölötti első fel-le ízületet gyanítja, de a pontos hajtás még nincs azonosítva. A hang önmagában nem bizonyít fogaskeréksérülést; túlterhelés, elakadás, elállított nullpont vagy sérült hajtás egyaránt nyitott lehetőség. **További joystick- és ROS-karpróbát ne végezzünk, amíg az érintett ízületet áramtalanítva meg nem vizsgáltuk.** A kart alá kell támasztani, a hajtást nem szabad erővel átforgatni.
+
+Olvasó jellegű vizsgálat történt, mozgásparancs nélkül:
+
+- Az újraindítás utáni `/PowerVoltage` érték **25,131 V** volt. A 2026-09-18-i 17,74 V-os lemerülés tehát a mostani jelenséget önmagában nem magyarázza.
+- A `/arm_cmd` típusa `std_msgs/Float32MultiArray`; egyetlen feliratkozója a `/wheeltec_robot`, **nincs ROS-publikálója**. A Jetsonon nem fut `joy` vagy kar-teleop node, és nem látszik `/dev/input/js*`. Ez alapján a használt fizikai joystick valószínűleg közvetlenül az alsó vezérlőhöz kapcsolódik; ezt a kábelezés/vevőegység fizikai ellenőrzése igazolhatja. A webes vezérlés szoftveres korlátozása ezt a joystick-utat nem védené.
+- A `/joint_states` üzenetben minden pozíció nulla, publikálója a gyári `joint_state_publisher`. Ez modellállapot, **nem mért szervópozíció**; ebből nem tudható, hol van ténylegesen a kar. A gyári `wheeltec_robot.cpp` `/arm_cmd` callbackje három célértéket továbbít soros vonalon, valós ízületpozíciót és szervóhibát nem publikál.
+- A `wheeltec_robot.cpp` destruktora szabályos leálláskor a bázisnak nulla sebességet, majd a karnak `[0, 1.5707, 0.3917, 0]` célt küld. A második ízület 1,5707 rad célja nagyobb, mint a betöltött `mini_mec_moveit_four.urdf` ±0,785 rad határa. Nem bizonyított, hogy a robot újraindításakor ez a kódrész ténylegesen végrehajtódott, illetve hogy a modellhatár megfelel-e a fizikai határnak. Emiatt **ne állítsuk le vagy indítsuk újra próbaképpen a bringupot** a kar mechanikai ellenőrzése előtt. A gyári fájlt nem módosítottuk.
+- A régi `/home/wheeltec/arm_jog.py` induláskor azonnal elküldi a `[0.05, 0, 0, 0]` célt, miközben a valós kezdőpozíciót nem tudja lekérdezni. Ezt az eszközt most ne indítsuk el.
+
+Webes, valóban működő karvezérléshez előbb az érintett fel-le ízület állapotát és a gyári joystick/alsó vezérlő útját kell tisztázni. Utána a három parancsolt ízület valós nullahelyét és biztonságos fizikai tartományát, valamint a megfogó konvencióját kell egyenként megerősíteni. A jelenlegi `control_panel.html` kar része szándékosan csak szimuláció; élő gombok hozzáadása a mostani, visszajelzés nélküli állapotban újabb végállásnak feszítést okozhatna.
+
+A teljesítményről ugyanebben a vizsgálatban: a C70 ROS-forrása kb. 15 kép/s sebességgel publikált, míg a `/map` kb. 0,8–1 üzenet/s sebességgel frissült. A laptop helyi MJPEG-alagútja nem válaszolt, ezért a dashboard a nagyobb késleltetésű nyers ROS-képet használta. A `pickerbot-slam` konténer kb. 32% CPU-t használt, 5,2 GiB memória rendelkezésre állt. A kamera megjelenítési késése és a térkép frissítési sebessége külön optimalizálási feladat; nem magyarázza a kar mechanikai hangját.

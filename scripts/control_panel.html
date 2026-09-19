@@ -19,28 +19,38 @@
     display:flex; align-items:center; gap:1rem; padding:0.8rem 1.2rem;
     border-bottom:1px solid var(--border); background:var(--surface); flex-wrap:wrap;
   }
-  header h1 { font-size:0.95rem; margin:0; font-weight:600; }
-  header a { color:var(--accent); font-size:0.78rem; text-decoration:none; }
-  #globalStatus { font-size:0.78rem; padding:0.25rem 0.6rem; border-radius:99px; border:1px solid var(--border); }
+  header h1 { font-size:1.05rem; margin:0; font-weight:600; }
+  header a { color:var(--accent); font-size:0.85rem; text-decoration:none; }
+  #globalStatus { font-size:0.85rem; padding:0.25rem 0.6rem; border-radius:99px; border:1px solid var(--border); }
   #globalStatus.ok { color:var(--good); border-color:var(--good); }
   #globalStatus.err { color:var(--bad); border-color:var(--bad); }
 
   .banner {
-    padding:0.5rem 1.2rem; font-size:0.78rem; background:#241a10; color:var(--warm);
+    padding:0.65rem 1.2rem; font-size:0.85rem; line-height:1.45; background:#241a10; color:var(--warm);
     border-bottom:1px solid var(--border);
   }
 
   .grid {
     display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
     gap:1px; background:var(--border);
   }
-  .panel { background:var(--card); display:flex; flex-direction:column; min-height:300px; }
-  .panel.wide { grid-column: 1 / -1; }
+  .panel { background:var(--card); display:flex; flex-direction:column; min-height:300px; min-width:0; }
+  .sensor-panel { grid-column:1; grid-row:1; }
+  .base-panel { grid-column:2; grid-row:1; }
+  .log-panel { grid-column:1; grid-row:2; }
+  .arm-panel { grid-column:2; grid-row:2; }
+  @media (max-width:850px) {
+    .grid { grid-template-columns:1fr; }
+    .sensor-panel { grid-column:1; grid-row:1; }
+    .base-panel { grid-column:1; grid-row:2; }
+    .arm-panel { grid-column:1; grid-row:3; }
+    .log-panel { grid-column:1; grid-row:4; }
+  }
   .panel-head {
     display:flex; justify-content:space-between; align-items:center; gap:0.6rem;
     padding:0.5rem 0.8rem; border-bottom:1px solid var(--border);
-    font-size:0.78rem; color:var(--muted); letter-spacing:0.04em; text-transform:uppercase;
+    font-size:0.85rem; color:var(--muted); letter-spacing:0.04em; text-transform:uppercase;
   }
   .panel-head .tag { font-size:0.66rem; padding:2px 8px; border-radius:99px; text-transform:none; letter-spacing:0; }
   .tag.live { color:var(--good); border:1px solid var(--good); }
@@ -57,17 +67,18 @@
     border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer;
   }
   .arm-toggle button.armed { background:var(--bad); color:#1a0e0e; border-color:var(--bad); font-weight:700; }
+  .arm-toggle button:disabled { opacity:0.5; cursor:not-allowed; }
   .arm-toggle .state { font-size:0.78rem; color:var(--muted); }
   .arm-toggle .state.armed-label { color:var(--bad); font-weight:700; }
 
   .dpad { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:6px; justify-content:center; margin:1rem 0; }
   .dpad button {
     font-family:inherit; font-size:1.1rem; border-radius:8px; border:1px solid var(--border);
-    background:var(--surface); color:var(--text); cursor:pointer; user-select:none;
+    background:var(--surface); color:var(--text); cursor:pointer; user-select:none; touch-action:none;
   }
   .dpad button:active, .dpad button.pressed { background:var(--accent); color:#0d1418; }
   .rot-row { display:flex; gap:0.6rem; justify-content:center; margin-bottom:0.6rem; }
-  .rot-row button { font-family:inherit; padding:0.5rem 1rem; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
+  .rot-row button { font-family:inherit; padding:0.5rem 1rem; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; touch-action:none; }
   .rot-row button:active, .rot-row button.pressed { background:var(--accent); color:#0d1418; }
 
   .stop-btn {
@@ -99,35 +110,35 @@
   .log .mock { color:var(--muted); }
   .log .sim { color:var(--warm); }
 
-  .camera-embed { border:0; width:100%; height:420px; background:var(--bg); }
+  .camera-embed { border:0; width:100%; height:480px; background:var(--bg); }
   .embed-note { font-size:0.72rem; color:var(--faint); padding:0.4rem 0.8rem; }
+  @media (max-width:520px) { .camera-embed { height:900px; } }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Pickerbot Mini — kézi vezérlőpult</h1>
+  <h1>Pickerbot Mini — élő bemutató</h1>
   <span id="globalStatus">csatlakozás...</span>
   <a href="dashboard.html" target="_blank">↗ csak a szenzor-irányítópult önmagában</a>
 </header>
 
 <div class="banner">
-  ⚠️ Ez a felület a bázis-vezérléshez valódi <code>/cmd_vel</code> parancsot tud küldeni, de csak explicit
-  ÉLESÍTÉS után. A karvezérlő panel mindig SZIMULÁCIÓ — a <code>/arm_cmd</code> topic és a j1/j2/j3 ízület-határ
-  (±45°) már élőben megerősítve van, de a gripper nyitott/zárt numerikus konvenciója nincs kalibrálva, ezért a
-  valós küldés még nincs bekötve. Részletek: <a href="../docs/08-kezi-vezerles.md" style="color:var(--warm);">docs/08-kezi-vezerles.md</a>.
+  ⚠️ A kerekek csak ÉLESÍTÉS után mozoghatnak; a gombot tartsd nyomva, az elengedése megállást kér.
+  A kar gombjai csak szimulációk. Vészhelyzetben a fizikai leállítót használd: a webes megállítás hálózatfüggő.
+  <a href="../docs/08-kezi-vezerles.md" style="color:var(--warm);">Kezelési és biztonsági leírás</a>.
 </div>
 
 <div class="grid">
 
-  <div class="panel">
+  <div class="panel base-panel">
     <div class="panel-head">
       <span>Bázis (mecanum) vezérlés</span>
-      <span class="tag live">valós-képes, ÉLESÍTÉS mögé zárva</span>
+      <span class="tag live">ÉLESÍTÉS után aktív</span>
     </div>
     <div class="panel-body">
       <div class="arm-toggle">
-        <button id="armBtn">ÉLESÍTÉS</button>
+        <button id="armBtn" disabled>ÉLESÍTÉS</button>
         <span class="state" id="armState">nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra</span>
       </div>
 
@@ -146,7 +157,7 @@
         <button id="s" title="hátra">↓</button>
         <button id="c" title="átló jobbra-hátra">↘</button>
       </div>
-      <button class="stop-btn" id="estopBtn">E-STOP — AZONNALI MEGÁLLÁS</button>
+      <button class="stop-btn" id="estopBtn">WEBES MEGÁLLÍTÁS — LEÉLESÍTÉS</button>
 
       <div class="readout" id="baseReadout">
         linear.x: <b>0.000</b> m/s · linear.y: <b>0.000</b> m/s · angular.z: <b>0.000</b> rad/s<br>
@@ -155,16 +166,16 @@
     </div>
   </div>
 
-  <div class="panel">
+  <div class="panel arm-panel">
     <div class="panel-head">
       <span>Kar + gripper vezérlés</span>
       <span class="tag sim">SZIMULÁCIÓ — valós kar-vezérlés még nincs</span>
     </div>
     <div class="panel-body">
       <div class="readout" style="margin-top:0; margin-bottom:1rem; color:var(--warm);">
-        A 4 csúszka és a gripper-gombok csak a naplóba írnak. Nincs bekötve semmilyen valós
-        ROS topic/action — a <code>mini_mec_four_arm_moveit_config</code> ízület-határai és
-        topic-nevei nincsenek leolvasva a robotról (lásd docs/08-kezi-vezerles.md).
+        A 3 csúszka és a gripper-gombok csak a naplóba írnak. Nincs bekötve semmilyen valós
+        ROS-parancs. A <code>/arm_cmd</code> és a j1/j2/j3 ±45° határa ismert, de a gripper
+        konvenciója és a kar biztonságos mozgása még nincs kalibrálva (lásd docs/08-kezi-vezerles.md).
       </div>
 
       <div class="slider-row"><label>j1_joint</label><input type="range" id="j0" min="-45" max="45" value="0"><span class="val" id="j0v">0°</span></div>
@@ -178,13 +189,13 @@
     </div>
   </div>
 
-  <div class="panel wide">
-    <div class="panel-head"><span>Kamerák + LiDAR + 3D point cloud (meglévő irányítópult beágyazva)</span></div>
-    <div class="embed-note">A <code>dashboard.html</code> ugyanaz a fájl, amit ez a panel élőben megjelenít — nincs duplikálva. Ha a beágyazott iframe üresen marad, nyisd meg külön fülön a fenti linkkel.</div>
-    <iframe class="camera-embed" src="dashboard.html"></iframe>
+  <div class="panel sensor-panel">
+    <div class="panel-head"><span>C70 kamera és élő 2D térkép</span><span class="tag live">szenzornézet</span></div>
+    <iframe class="camera-embed" src="dashboard.html?embed=1" title="C70 kamera és SLAM-térkép"></iframe>
+    <div class="embed-note">A teljes Astra-, LiDAR- és 3D nézet a felső „csak a szenzor-irányítópult” linken nyitható meg.</div>
   </div>
 
-  <div class="panel wide">
+  <div class="panel log-panel">
     <div class="panel-head"><span>Parancsnapló</span></div>
     <div class="panel-body">
       <div class="log" id="logBox"></div>
@@ -200,14 +211,21 @@ const ROSBRIDGE_PORT = 9090;
 // ---------- rosbridge connection (csak a bázis-parancshoz kell éles kapcsolat) ----------
 const ros = new ROSLIB.Ros({ url: `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}` });
 const statusEl = document.getElementById('globalStatus');
-ros.on('connection', () => { statusEl.textContent = "rosbridge: csatlakozva"; statusEl.className = "ok"; });
-ros.on('error', () => { statusEl.textContent = "rosbridge hiba (offline/mock móddal is használható a napló)"; statusEl.className = "err"; });
-ros.on('close', () => { statusEl.textContent = "rosbridge: lezárva"; statusEl.className = "err"; });
+ros.on('connection', () => {
+  statusEl.textContent = "rosbridge: csatlakozva";
+  statusEl.className = "ok";
+  document.getElementById('armBtn').disabled = false;
+});
+function lostConnection(label) {
+  statusEl.textContent = label;
+  statusEl.className = "err";
+  document.getElementById('armBtn').disabled = true;
+  if (armed) setArmed(false);
+}
+ros.on('error', () => lostConnection("rosbridge hiba — bázis leélesítve"));
+ros.on('close', () => lostConnection("rosbridge: lezárva — bázis leélesítve"));
 
-// UNVERIFIED ezen a konkrét roboton ebben a sessionben: a topic létezését
-// és típusát `rostopic info /cmd_vel`-lel kell megerősíteni élő teszt előtt
-// (lásd docs/08-kezi-vezerles.md). Ez a Wheeltec `turn_on_wheeltec_robot`
-// gyári konvenciója, nem ezen az egy robotpéldányon mért tény.
+// A /cmd_vel geometry_msgs/Twist típust 2026-09-18-án élőben megerősítették.
 const cmdVelTopic = new ROSLIB.Topic({
   ros, name: '/cmd_vel', messageType: 'geometry_msgs/Twist'
 });
@@ -238,10 +256,16 @@ let armed = false;
 let lastActivity = Date.now();
 let current = { x: 0, y: 0, az: 0 };   // ténylegesen kiküldött (rate-limitelt) parancs
 let target = { x: 0, y: 0, az: 0 };    // gomb-állapotból számolt kért parancs
+let lastPublishLog = 0;
 
 function clamp(v, lim) { return Math.max(-lim, Math.min(lim, v)); }
 
 function setArmed(value) {
+  if (value && !ros.isConnected) {
+    log('mock', 'Nincs ROS-kapcsolat — a bázis nem élesíthető');
+    return;
+  }
+  if (!value) hardStop();
   armed = value;
   const btn = document.getElementById('armBtn');
   const state = document.getElementById('armState');
@@ -271,15 +295,19 @@ function updateReadout() {
 }
 
 function publishTwist() {
+  if (!armed) return;
+  if (!ros.isConnected) {
+    setArmed(false);
+    return;
+  }
   const msg = new ROSLIB.Message({
     linear: { x: current.x, y: current.y, z: 0.0 },
     angular: { x: 0.0, y: 0.0, z: current.az }
   });
-  if (armed) {
-    cmdVelTopic.publish(msg);
+  cmdVelTopic.publish(msg);
+  if (Date.now() - lastPublishLog > 1000) {
     log('sent', `/cmd_vel <- x=${current.x.toFixed(3)} y=${current.y.toFixed(3)} az=${current.az.toFixed(3)}`);
-  } else {
-    log('mock', `MOCK (nincs élesítve) — küldött volna: x=${current.x.toFixed(3)} y=${current.y.toFixed(3)} az=${current.az.toFixed(3)}`);
+    lastPublishLog = Date.now();
   }
 }
 
@@ -308,11 +336,17 @@ function recomputeTarget() {
 
 function wireHold(id, key) {
   const el = document.getElementById(id);
-  const down = () => { pressed.add(key); el.classList.add('pressed'); recomputeTarget(); lastActivity = Date.now(); };
+  const down = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    pressed.add(key); el.classList.add('pressed'); recomputeTarget(); lastActivity = Date.now();
+    if (!armed) log('mock', `MOCK — ${key} (a bázis nincs élesítve)`);
+  };
   const up = () => { pressed.delete(key); el.classList.remove('pressed'); recomputeTarget(); };
-  el.addEventListener('mousedown', down); el.addEventListener('mouseup', up); el.addEventListener('mouseleave', up);
-  el.addEventListener('touchstart', (e) => { e.preventDefault(); down(); }, { passive: false });
-  el.addEventListener('touchend', (e) => { e.preventDefault(); up(); }, { passive: false });
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('pointerleave', up);
 }
 ['q','w','e','a','d','z','s','c'].forEach(k => wireHold(k, k));
 wireHold('rotLeft', 'rotLeft');
@@ -322,28 +356,38 @@ function hardStop() {
   target = { x: 0, y: 0, az: 0 };
   current = { x: 0, y: 0, az: 0 };
   pressed.clear();
+  document.querySelectorAll('.pressed').forEach(el => el.classList.remove('pressed'));
   updateReadout();
-  publishTwist();
+  if (armed && ros.isConnected) publishTwist();
 }
 document.getElementById('stopMid').addEventListener('click', hardStop);
 document.getElementById('estopBtn').addEventListener('click', () => {
-  hardStop();
   setArmed(false);
-  log('sent', "E-STOP — leélesítve, nulla parancs kiküldve");
+  log('mock', "Webes megállítás — a fizikai vészleállítót nem helyettesíti");
 });
 
 // billentyűzet is működjön (WASD + QE forgatáshoz, ha nem akarod egérrel tartani)
 const KEYMAP = { w:'w', a:'a', s:'s', d:'d', q:'q', e:'e', z:'z', c:'c', ArrowLeft:'rotLeft', ArrowRight:'rotRight' };
 window.addEventListener('keydown', (e) => {
-  const key = KEYMAP[e.key];
+  const key = KEYMAP[e.key] || KEYMAP[e.key.toLowerCase()];
   if (!key) return;
+  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
+  e.preventDefault();
+  if (e.repeat) return;
   pressed.add(key); recomputeTarget(); lastActivity = Date.now();
+  if (!armed) log('mock', `MOCK — ${key} (a bázis nincs élesítve)`);
 });
 window.addEventListener('keyup', (e) => {
-  const key = KEYMAP[e.key];
+  const key = KEYMAP[e.key] || KEYMAP[e.key.toLowerCase()];
   if (!key) return;
   pressed.delete(key); recomputeTarget();
 });
+window.addEventListener('pointerup', () => {
+  pressed.clear(); recomputeTarget();
+  document.querySelectorAll('.pressed').forEach(el => el.classList.remove('pressed'));
+});
+window.addEventListener('blur', () => setArmed(false));
+document.addEventListener('visibilitychange', () => { if (document.hidden) setArmed(false); });
 
 // rate-limitelt tick — ugyanaz a logika, mint xavier_control/base_drive.py TeleopRateLimiter-je
 setInterval(() => {
@@ -359,9 +403,9 @@ setInterval(() => {
     setArmed(false);
   }
 
-  if (current.x !== 0 || current.y !== 0 || current.az !== 0 || pressed.size > 0) {
-    publishTwist();
-  }
+  // Élesítve a nulla parancsot is periodikusan küldjük. A webes megállítás
+  // továbbra is hálózatfüggő, ezért nem tekinthető fizikai vészleállítónak.
+  if (armed) publishTwist();
 }, TICK_MS);
 
 updateReadout();
@@ -376,11 +420,11 @@ log('mock', "vezérlőpult betöltve — bázis: nincs élesítve, kar: mindig s
   const val = document.getElementById(id + 'v');
   slider.addEventListener('input', () => {
     val.textContent = slider.value + "°";
-    log('sim', `SZIMULÁCIÓ — ${id} kért szög: ${slider.value}° (nincs valós topic, csak napló)`);
+    log('sim', `SZIMULÁCIÓ — ${id} kért szög: ${slider.value}° (nincs valós küldés, csak napló)`);
   });
 });
-document.getElementById('gripOpen').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper NYIT parancs (nincs valós topic, csak napló)"));
-document.getElementById('gripClose').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper ZÁR parancs (nincs valós topic, csak napló)"));
+document.getElementById('gripOpen').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper NYIT parancs (nincs valós küldés, csak napló)"));
+document.getElementById('gripClose').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper ZÁR parancs (nincs valós küldés, csak napló)"));
 </script>
 </body>
 </html>

@@ -1,6 +1,12 @@
 # Saját projekt #1 — élő webes irányítópult
 
-**Fut, tesztelve 2026-08-25-én.** Egyetlen oldal, minden élő szenzor-feed egy helyen, böngészőből: [scripts/dashboard.html](../scripts/dashboard.html).
+**2026-08-25-én szenzorokkal tesztelve.** A [scripts/control_panel.html](../scripts/control_panel.html) beágyazza a [scripts/dashboard.html](../scripts/dashboard.html) oldalt. A 2026-09-18-i mérésen a weboldal elérhető volt, de a kamera, LiDAR és SLAM publikálói hiányoztak. 2026-09-19-én a C70, a `/scan` és a valódi `/map` külön Docker-konténerekből újra megjelent. Az aktuális laptopos nézet a [scripts/start-demo-view.ps1](../scripts/start-demo-view.ps1) indítóval érhető el; lásd [10-bemutato-terkep.md](10-bemutato-terkep.md).
+
+Az önálló Xavier repóban a helyi `control_panel.html` a közös belépőoldal: a C70 képe és a valódi `/map` a bázisvezérlés mellett látszik. A beágyazott `dashboard.html?embed=1` csak ezt a két adatfolyamot kéri le, így a rejtett Astra- és 3D-panelek nem dolgoznak feleslegesen. A teljes szenzornézet külön linken nyílik. A `start-demo-view.ps1` alapból a vezérlőpultot nyitja meg; `-DashboardOnly` kapcsolóval csak a teljes szenzornézetet. A helyi HTTP-szerver a repó gyökerét szolgálja ki, ezért a dokumentációs linkek is működnek. A roboton futó 8901-es, régi weboldal ettől nem frissül automatikusan.
+
+A repó gyökerében lévő `index.html`, `control_panel.html` és `dashboard.html` csak átirányítás: a ténylegesen szerkesztendő felületek a `scripts/` mappában vannak. A korábbi `http://127.0.0.1:8902/dashboard.html` könyvjelző is működik az új helyi szerverrel.
+
+Ha a helyi 8080-as SSH-videóalagút megszakad, a C70 panel a meglévő rosbridge-en át ritkított nyers ROS-képre vált; ez láthatóan lassabb. A panel nyolc másodpercenként újrapróbálja az MJPEG-et, és sikeres visszakapcsoláskor megszünteti a tartalék ROS-kép feliratkozását. A `start-demo-view.ps1` a teljesen elavult állapotfájlt felismeri, de ha a helyi szerver vagy az SSH-folyamat még fut, előbb a `stop-demo-view.ps1` indítót kell használni.
 
 ## Mit tud
 
@@ -10,8 +16,11 @@
 - **Kamera mód kapcsolók** (RGB/Depth be-ki) élő `std_srvs/SetBool` hívásokkal, relaunch nélkül a lapról.
 - **Depth kép saját canvas-renderelése** — a `web_video_server` nem tudja a 16UC1 nyers mélységformátumot automatikusan színes képpé konvertálni (`cv_bridge` hiba: `[16UC1] is not a color format`), ezért ezt a lap saját JavaScript-je csinálja.
 - **3D point cloud + LiDAR overlay**, Three.js + OrbitControls (kattints+húzd forgatáshoz, görgő zoomhoz) — `/camera/depth/points`-ból (kék), a LiDAR `/scan` ugyanabba a 3D térbe vetítve (narancssárga).
+- **Valódi 2D SLAM-térkép panel** a C70 kép mellett: `/map` (`nav_msgs/OccupancyGrid`) foglaltsági rács, frissülési állapottal. Csak akkor mutat térképet, ha ROS-oldalon tényleges `/map` üzenet érkezik; a 2026-09-19-i robotoldali publikálást és helyi megjelenést ellenőriztük.
 
-## Indítás
+## Korábbi kézi indítás (2026-08-25)
+
+Az alábbi eljárás a régi, külön szenzorindítás dokumentációja. A 2026-09-18 óta dokumentált automatikus systemd-szolgáltatások mellett a `start_feeds.sh`-t ne futtasd ellenőrzés nélkül, mert folyamatokat duplázhat. Az aktuális bemutató ellenőrzési sorrendje a [10-bemutato-terkep.md](10-bemutato-terkep.md) fájlban van.
 
 ```bash
 # a roboton, SSH-n át:
@@ -27,7 +36,7 @@ python -m http.server 8901
 
 Majd nyisd meg: `http://127.0.0.1:8901/dashboard.html` — **fontos: ne `file://`-ként**, mert az statikus pillanatképként fut, a WebSocket-kapcsolat el sem indul.
 
-Nyers kamera-lista debughoz: `http://192.168.123.50:8080/` (csak sima 8-bites RGB/C70 képekhez jó, a Depth itt `cv_bridge` hibát dob — azt a dashboard saját canvas-render-je oldja meg).
+**Mai hozzáférés:** a videókiszolgáló csak a robot `127.0.0.1:8080` címén figyel. A laptopos indító SSH-alagutat nyit, így a helyi `http://127.0.0.1:8080/` kamera-lista elérhető. A korábbi `http://192.168.123.50:8080/` cím szándékosan nem működik. A Depth 16UC1 adatát továbbra is a dashboard saját canvas-renderje kezeli.
 
 ## Technikai buktatók, amiket ez a projekt oldott meg
 
@@ -37,5 +46,5 @@ Nyers kamera-lista debughoz: `http://192.168.123.50:8080/` (csak sima 8-bites RG
 
 ## Mit nem tud (még)
 
-- Nem irányítja a motorokat vagy a kart — ez tisztán szenzor-megfigyelő irányítópult volt, az eredeti cél (motor/kar webes vezérlés) még nincs implementálva ezen a felületen.
+- A külön megnyitott `dashboard.html` csak szenzorokat mutat. A `control_panel.html` az alvázhoz élesítés után tud `/cmd_vel` parancsot küldeni, de a webes megállítás hálózatfüggő és korábban nem állította meg időben a robotot; vészhelyzetben a fizikai leállítót kell használni. A kar és a gripper itt továbbra is csak szimuláció.
 - Az Astra RGB nem akart bekapcsolni egy vizsgálat közben — ez a hiba a session lezárásakor még nyitott volt, nem lett kivizsgálva.
