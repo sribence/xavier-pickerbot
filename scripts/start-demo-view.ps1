@@ -19,12 +19,18 @@ if (Test-Path -LiteralPath $stateFile) {
     $previous = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
     $oldServer = Get-Process -Id $previous.serverPid -ErrorAction SilentlyContinue
     $oldTunnel = Get-Process -Id $previous.tunnelPid -ErrorAction SilentlyContinue
-    if (-not $oldServer -and -not $oldTunnel) {
-        # A laptop alvása vagy megszakadt SSH-kapcsolat után csak az állapotfájl maradt meg.
-        Remove-Item -LiteralPath $stateFile
-    } else {
-        throw "A bemutatónézet vagy egy része még fut. Előbb futtasd a stop-demo-view.ps1 fájlt."
+    
+    if ($oldServer -and $oldTunnel -and -not $oldServer.HasExited -and -not $oldTunnel.HasExited) {
+        Write-Host "A bemutatónézet és az SSH-alagút már fut: $url"
+        if (-not $NoBrowser) { Start-Process $url }
+        exit 0
     }
+
+    # Ha bármelyik folyamat leállt (pl. robot újraindításkor az SSH-alagút megszakadt),
+    # a megmaradt féloldalas folyamatot leállítjuk az automatikus helyreállításhoz.
+    if ($oldServer -and -not $oldServer.HasExited) { Stop-Process -Id $oldServer.Id -Force -ErrorAction SilentlyContinue }
+    if ($oldTunnel -and -not $oldTunnel.HasExited) { Stop-Process -Id $oldTunnel.Id -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $stateFile -ErrorAction SilentlyContinue
 }
 foreach ($port in 8080, 8902) {
     $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)
