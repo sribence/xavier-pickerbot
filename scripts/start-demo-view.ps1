@@ -1,4 +1,4 @@
-param([switch]$NoBrowser, [switch]$DashboardOnly)
+﻿param([switch]$NoBrowser, [switch]$DashboardOnly)
 $ErrorActionPreference = 'Stop'
 
 $accessDir = Join-Path $env:USERPROFILE 'Documents\Codex\pickerbot-access'

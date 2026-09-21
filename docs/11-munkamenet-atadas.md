@@ -65,3 +65,17 @@ A hálózatváltás után a vezetékes böngészőoldal képe és térképe átm
 ### Fizikailag kihúzott USB-stick próbája
 
 A felhasználó kihúzta a TP-Link USB Wi-Fi sticket. A roboton a `wlan1` eltűnt az eszközlistából; a beépített `wlan0` továbbra is a `TP-Link_A426` hálózaton maradt, a méréskor −33 dBm jellel és 300 Mbit/s adási linkkel. Az Ethernetet újabb 120 másodperces automatikus visszakapcsolással védett próbában logikailag lekapcsoltuk. A megszokott `.50` alias a `wlan0`-n jelent meg, az SSH és a bringup/rosbridge aktív volt, a laptop felé az útvonal `dev wlan0` lett. A videóalagút indítójának újrafuttatása után a C70 pillanatkép HTTP 200 választ adott **0,64 másodperc** alatt (20 439 bájt), és a bemutatóoldal élő MJPEG-képet, valamint változó tartalmú 384×384-es térképet jelzett. Az automatikus Ethernet-visszakapcsolás ezután lefutott: a `.50` cím kizárólag az `eth0`-n volt, a `wlan0` `.52` címen kapcsolódva maradt, az oldalon a kamera és a változó térkép továbbra is látszott. A mérés az adott helyen, rövid ideig tartott; a hosszú távú kamera- és térképfrissülést külön kell ellenőrizni. Valódi fizikai Ethernet-kábel kihúzása továbbra sem történt meg.
+
+## 2026-09-21 (délután): kábel nélküli próba a felhasználó megfigyelése alapján
+
+**Mit igazoltunk (a felhasználó szerint, számszerű mérés nélkül):** a felhasználó kihúzta az Ethernet-kábelt, és a robotot a beépített Wi-Fin (`wlan0`, TP-Link_A426) használva körbevitte a szobában. A bemutatóoldal működött, a rosbridge kapcsolat, a kamera és a térkép megjelent. Ez az első fizikai kábelkihúzásos próba. Kábel nélküli **újraindítást** nem próbáltunk.
+
+**Problémák:**
+- A kamerakép 1–2 percenként megszakadt. Az alagút (`start-demo-view.ps1`) újrafuttatása után egy ideig ismét működött. Egy alkalommal a felhasználó szerint a kép kb. 3 perc után magától tért vissza. Ez inkább a Wi-Fi-kapcsolat megakadására utal, mint az SSH-folyamat megszűnésére (az `ssh` 30 másodperc után feladja), de az ok **nincs bizonyítva**.
+- A kamera késése kábel nélkül a felhasználó szerint túl nagy egy izgalmas bemutatóhoz. Nincs számszerű mérés; a korábbi ismert ok, hogy a robot `web_video_server` a 320×240 URL-kérés ellenére 640×480 képet küld.
+
+**Mit változtattunk (a laptopon, a roboton semmit):**
+- `scripts/start-demo-view.ps1` és `scripts/stop-demo-view.ps1`: UTF-8 BOM. Nélküle a Windows PowerShell 5.1 az ékezetes szöveget ANSI-ként olvasta, és szintaxishibával leállt.
+- Új `scripts/watch-demo-view.ps1`: 10 másodpercenként egy JPEG-pillanatképet kér az alagúton át, két sikertelen kör után lefuttatja a `start-demo-view.ps1 -NoBrowser` parancsot. Naplót ír a `%TEMP%\pickerbot-demo-watch.csv` fájlba (idő, siker, válaszidő másodpercben, méret bájtban, újraindítás). **Szintaxisát és működését még nem futtattuk le**, itt nincs PowerShell.
+
+**Következő lépések:** futtasd a `watch-demo-view.ps1`-et kábel nélkül, és a napló megmutatja a kiesések gyakoriságát és a válaszidőt. Olvasó mérések a roboton (`iw dev wlan0 link`, `iw dev wlan0 get power_save`) és laptopról `ping -n 60 192.168.123.50`. Ezek után dönthető el, hogy a kamera forrását kisebb felbontásra/kevesebb képkockára kell-e állítani (`pickerbot-c70` konténer újra létrehozása, robotoldali változtatás, külön jóváhagyással).

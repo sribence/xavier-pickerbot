@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $stateFile = Join-Path $env:TEMP 'pickerbot-demo-view.json'
 if (-not (Test-Path -LiteralPath $stateFile)) {
     Write-Host 'A bemutatónézet nem fut ezen a gépen.'
