@@ -259,7 +259,7 @@ function lostConnection(label) {
   statusEl.textContent = label;
   statusEl.className = "err";
   document.getElementById('armBtn').disabled = true;
-  if (armed) setArmed(false);
+  if (armed) setArmed(false, 'a rosbridge-kapcsolat megszakadt');
 }
 ros.on('error', () => lostConnection("rosbridge hiba — bázis leélesítve"));
 ros.on('close', () => lostConnection("rosbridge: lezárva — bázis leélesítve"));
@@ -285,6 +285,9 @@ function log(cls, text) {
 // Ugyanazok az óvatos, NEM mért plafonok, mint a xavier_control/base_drive.py-ban —
 // ha ott változik a szám, itt is frissítsd, hogy a két oldal ne térjen el egymástól.
 const MAX_LINEAR_MPS = 0.15;
+// Élő próba (felhasználói jelzés): az "előre" gomb hátrafelé vitte a robotot -> az x előjelét megfordítjuk.
+// Az y (oldalazás) és a forgás előjelét még NEM ellenőriztük; ha azok is fordítottak, itt külön kell állítani.
+const X_SIGN = -1;
 const MAX_ANGULAR_RADPS = 0.3;          // alapérték; a csúszka ezt csak a webes forgatógombokra írja felül
 const ANGULAR_SLIDER_MIN = 0.1;
 const ANGULAR_SLIDER_MAX = 1.0;
@@ -305,7 +308,7 @@ let lastPublishLog = 0;
 
 function clamp(v, lim) { return Math.max(-lim, Math.min(lim, v)); }
 
-function setArmed(value) {
+function setArmed(value, reason) {
   if (value && !ros.isConnected) {
     log('mock', 'Nincs ROS-kapcsolat — a bázis nem élesíthető');
     return;
@@ -323,14 +326,28 @@ function setArmed(value) {
     state.textContent = "nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra";
     state.classList.remove('armed-label');
   }
-  log(armed ? 'sent' : 'mock', armed ? "ÉLESÍTVE" : "leélesítve");
+  log(armed ? 'sent' : 'mock', armed ? "ÉLESÍTVE" : "leélesítve" + (reason ? ` (${reason})` : ''));
 }
 
+// Az élesítés megerősítése az oldalon belül történik (két kattintás 4 másodpercen belül), nem böngészői
+// confirm() ablakkal: az ablak bezárása után a böngésző elsütötte a 'blur' eseményt, és a panel azonnal leélesített.
+let armConfirmTimer = null;
+function cancelArmConfirm() {
+  if (armConfirmTimer) { clearTimeout(armConfirmTimer); armConfirmTimer = null; }
+  const btn = document.getElementById('armBtn');
+  btn.textContent = 'ÉLESÍTÉS';
+  if (!armed) document.getElementById('armState').textContent = "nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra";
+}
 document.getElementById('armBtn').addEventListener('click', () => {
-  if (!armed) {
-    if (!confirm("A robot bázisa valóban mozogni fog a gombok szerint. Élesíted?")) return;
+  if (armed) { setArmed(false, 'kézi leélesítés'); return; }
+  if (!armConfirmTimer) {
+    document.getElementById('armBtn').textContent = 'MEGERŐSÍTEM';
+    document.getElementById('armState').textContent = "A robot bázisa mozogni fog a gombok szerint. Kattints újra 4 másodpercen belül az élesítéshez.";
+    armConfirmTimer = setTimeout(cancelArmConfirm, 4000);
+    return;
   }
-  setArmed(!armed);
+  cancelArmConfirm();
+  setArmed(true);
 });
 
 function updateReadout() {
@@ -342,7 +359,7 @@ function updateReadout() {
 function publishTwist() {
   if (!armed) return;
   if (!ros.isConnected) {
-    setArmed(false);
+    setArmed(false, 'nincs ROS-kapcsolat');
     return;
   }
   const msg = new ROSLIB.Message({
@@ -373,7 +390,7 @@ function recomputeTarget() {
     if (key === 'rotRight') az -= 1;
   }
   target = {
-    x: clamp(x, 1) * MAX_LINEAR_MPS,
+    x: clamp(x, 1) * MAX_LINEAR_MPS * X_SIGN,
     y: clamp(y, 1) * MAX_LINEAR_MPS,
     az: clamp(az, 1) * angularLimit,
   };
@@ -407,7 +424,7 @@ function hardStop() {
 }
 document.getElementById('stopMid').addEventListener('click', hardStop);
 document.getElementById('estopBtn').addEventListener('click', () => {
-  setArmed(false);
+  setArmed(false, 'webes megállítás');
   log('mock', "Webes megállítás — a fizikai vészleállítót nem helyettesíti");
 });
 
@@ -456,8 +473,8 @@ window.addEventListener('pointerup', () => {
   pressed.clear(); recomputeTarget();
   document.querySelectorAll('.pressed').forEach(el => el.classList.remove('pressed'));
 });
-window.addEventListener('blur', () => setArmed(false));
-document.addEventListener('visibilitychange', () => { if (document.hidden) setArmed(false); });
+window.addEventListener('blur', () => { if (armed) setArmed(false, 'az ablak elvesztette a fókuszt'); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && armed) setArmed(false, 'az oldal háttérbe került'); });
 
 // rate-limitelt tick — ugyanaz a logika, mint xavier_control/base_drive.py TeleopRateLimiter-je
 setInterval(() => {
@@ -470,7 +487,7 @@ setInterval(() => {
   // auto-leélesítés inaktivitás után, ugyanaz a minta, mint a Go2 dashboard _watchdog-ja
   if (armed && Date.now() - lastActivity > ARM_TIMEOUT_MS && pressed.size === 0) {
     log('mock', `${ARM_TIMEOUT_MS / 1000}s inaktivitás — automatikus leélesítés`);
-    setArmed(false);
+    setArmed(false, 'inaktivitás');
   }
 
   // Élesítve a nulla parancsot is periodikusan küldjük. A webes megállítás

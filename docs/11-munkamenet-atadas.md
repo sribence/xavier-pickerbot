@@ -158,3 +158,18 @@ Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó j
 - `scripts/control_panel.html`: az akku-csempe a `/PowerVoltage` alapján **becsült százalékot** is mutat (pl. „≈ 62% · 23,30 V”), a legutóbbi ~10 másodperc mediánjából, tipikus Li-ion/LiPo kisülési görbével, a felső pont a 25,5 V-os töltési határhoz igazítva. Figyelmeztetés 22,2 V alatt (~15%), piros 21,6 V alatt (~5%); ez felváltja a korábbi 21,5/20,0 V-os becslést. A százalék **nem mért töltöttség**: terhelés alatt a feszültség lesüllyed, a középső tartományban (kb. 20–60%) a görbe bizonytalan; a robot nem ad töltöttségi (fuel gauge) adatot.
 - Ellenőrzés: `node --check` hibamentes; headless böngészőben kitalált feszültségekkel (25,5 V ≈ 100%, 23,3 V ≈ 62%, 22,0 V ≈ 9% figyelmeztetés, 21,0 V ≈ 3% piros, 17,7 V ≈ 0%). Valódi akkuval, egy teljes lemerítési görbe felvételével **nem** vetettük össze.
 - **Javasolt pontosítás:** egy töltési/lemerítési ciklus közbeni feszültségnaplózás (idő és feszültség), amiből a százalék-görbe az adott akkura hitelesíthető.
+
+### 2026-09-21 (este): felhasználói visszaigazolások
+
+- **Indítás kábel nélkül:** a felhasználó szerint a robot azóta újraindult, hogy csak Wi-Fin (`wlan0`) és akkumulátorról fut, és **működik**. Ez a korábban nyitott „kábel nélküli újraindítás” pontot lezárja (a felhasználó megfigyelése, számszerű mérés nélkül).
+- **Térkép újrakezdése gomb:** a felhasználó szerint működik.
+- **Nem igazolt:** a megosztott kamerarelé (`/cam/c70.mjpg`) többablakos működése valódi robottal; ezt a felhasználó még nem próbálta külön.
+- **Helyszíni Wi-Fi:** a bemutató helyszínén csak a rendezvény napján lehet kipróbálni; a tartalék-terv (kábeles kapcsolat) és a robot gyors újraindíthatósága ezért fontos.
+
+### 2026-09-21 (este): élesítés utáni azonnali leélesítés — javítás
+
+- **Tünet (felhasználói képernyőkép a Parancsnaplóról, 15:39):** `ÉLESÍTVE`, egy `/cmd_vel <- x=0.000 …` sor, majd ugyanabban a másodpercben `leélesítve`; utána a gombok csak `MOCK — w (a bázis nincs élesítve)` sorokat írtak, a robot nem mozdult. A panel tehát élesítés után azonnal magától leélesített, és emiatt nem ment ki mozgásparancs.
+- **Valószínű ok (nincs bizonyítva):** az élesítést a böngésző `confirm()` ablaka kérte; az ablak bezárása után a böngésző elsüthette az `window blur` eseményt, amelyre a panel leélesít (biztonsági szabály). Headless böngészőben ez nem reprodukálható, ezért a valódi böngészőben kell ellenőrizni.
+- **Változtatás (`scripts/control_panel.html`):** az élesítés megerősítése az oldalon belül történik (az első kattintás „MEGERŐSÍTEM” feliratot ad, a második kattintás 4 másodpercen belül élesít); nincs böngészői ablak. A naplóba minden leélesítés oka bekerül (pl. `leélesítve (az ablak elvesztette a fókuszt)`, `(az oldal háttérbe került)`, `(inaktivitás)`, `(webes megállítás)`, `(a rosbridge-kapcsolat megszakadt)`), így ha újra előfordul, látszik az ok. A `blur`/háttérbe kerülés melletti automatikus leélesítés (biztonsági szabály) megmaradt.
+- **Ellenőrzés:** `node --check` hibamentes; headless böngészőben csonkolt `ROSLIB`-bal: az első kattintás nem élesít, 4 másodperc után visszaáll, két kattintás élesít (natív ablak nélkül), a `w` gomb tartásakor `/cmd_vel` üzenetek mennek (x akár 0,15 m/s-ig), `blur` esemény leélesít és a napló megmondja az okát. Valódi robottal és valódi böngészőben **nem** próbáltuk ki.
+- **Fizikai mozgáspróba:** még nem történt meg; a bázisvezérlés élő működése nem igazolt.
