@@ -37,7 +37,7 @@ A robotnak eredetileg nem volt saját internet-elérése — közvetlen Ethernet
    ```
 4. **Internet a robotnak:** Windows ICS (Internet Connection Sharing) a Wi-Fi-ről az Ethernetre megosztva (`ncpa.cpl` → Wi-Fi → Tulajdonságok → Megosztás fül → "Engedélyezés..." → cél: Ethernet). Ez NEM írja felül a kézzel beállított `192.168.0.50/24` címet, csak NAT-ol a robot felé — de a robot gateway-ét kézzel át kell írni rá (2. pont).
 
-A robot Wi-Fi hotspotot is tud (SSID `WHEELTEC_OrinSuper_Noetic_JP515`, jelszó: `dongguan`, robot címe ott `192.168.0.100`) — SSH-ra jó, de a ROS master már a `192.168.123.50`-es címre van kötve.
+A robot beépített Wi-Fi-je 2026-09-21 óta a `TP-Link_A426` hálózaton kliensként működik (`192.168.123.52`); a ROS megszokott `.50` címe Ethernet kiesésekor erre kerül. A korábbi saját hotspot profilja (SSID `WHEELTEC_OrinSuper_Noetic_JP515`, robot címe `192.168.0.100`) mentve maradt, de nem indul automatikusan. A két mód ugyanazt a rádiót használja. A jelenlegi elérést és visszaállítást lásd a [hálózati leírásban](09-robot-halozat.md).
 
 ## Kulcsos SSH beállítása (ha új robotpéldányhoz kell újra)
 

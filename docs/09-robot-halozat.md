@@ -1,6 +1,6 @@
 # A közös robot-hálózat (2026-09-21)
 
-**Friss állapot (2026-09-21 12:00):** a Pickerbot USB-s TP-Link adaptere (`wlan1`, TL-WN823N/RTL8192EU) profilja a `TP-Link_A426` hozzáférési ponthoz készült, de az adapter jelenleg `disconnected`: a robot Wi-Fi keresése nem talál SSID-t. Sikeres kapcsolódáskor a kábel melletti saját címe `192.168.123.51/24`. A `scripts/robot-wifi-failover.sh` telepített NetworkManager dispatcher-szkript a robot ROS-címét (`192.168.123.50/32`) átteszi erre az adapterre, ha az `eth0` kábeles kapcsolat megszűnik. Kábel visszatérésekor eltávolítja a Wi-Fi alias címet. A Wi-Fi profilban van a jelszó, a Git repóban nincs. A kontrollált kábel nélküli próba és az aktuális hiba a [munkamenet-átadásban](11-munkamenet-atadas.md) szerepel.
+**Friss állapot (2026-09-21):** a Pickerbot beépített Intel Wi-Fi-je (`wlan0`) kliensként a `TP-Link_A426` hálózaton van, címe `192.168.123.52/24`. A régi robot-hotspot profil mentve maradt, de nem indul automatikusan. Az USB-s TP-Link adapter (`wlan1`) profilja tartalék; a legutóbbi ellenőrzéskor le volt kapcsolódva. A [failover-szkript](../scripts/robot-wifi-failover.sh) az Ethernet kiesésekor a robot ROS-címét (`192.168.123.50/32`) elsősorban a beépített Wi-Fi-re, ennek hiányában az USB Wi-Fi-re teszi. Ethernet visszatérésekor leveszi az alias címet. A jelszó a robot védett NetworkManager-profiljaiban van, a Git repóban nincs. A kontrollált próba és a korlátok a [munkamenet-átadásban](11-munkamenet-atadas.md) szerepelnek.
 
 Egyetlen `192.168.123.0/24` hálón van minden: a netet adó gateway PC, a Unitree Go2, a Xavier Pickerbot Mini és a fejlesztő laptopok. Bárki, aki a routerre csatlakozik (Wi-Fi vagy kábel), internetet kap, és látja mindkét robotot.
 
@@ -36,12 +36,13 @@ A router WAN (kék) portja **nincs használva** — AP módban a router csak swi
 | `192.168.123.2` | TP-Link TL-WR940N (admin felület) | fix |
 | `192.168.123.18` | Go2 — fedélzeti Jetson (SSH 22, web 80, `mc_sensor_hub` 9101) | fix, gyári |
 | `192.168.123.20` | Go2 — Hesai LiDAR ("Pandar Console" web a 80-as porton) | fix, gyári |
-| `192.168.123.50` | Xavier Pickerbot Mini — kábelen `eth0`, annak kiesésekor `wlan1` alias | fix |
+| `192.168.123.50` | Xavier Pickerbot Mini — kábelen `eth0`, annak kiesésekor `wlan0`, majd `wlan1` alias | fix |
 | `192.168.123.51` | Xavier Pickerbot Mini — TP-Link USB Wi-Fi (`wlan1`) | fix |
+| `192.168.123.52` | Xavier Pickerbot Mini — beépített Intel Wi-Fi (`wlan0`) | fix |
 | `192.168.123.99` | fejlesztő laptop Ethernet (kézi, ha kábellel jössz) | fix |
 | `192.168.123.100`–`.149` | Wi-Fi / kábeles kliensek | DHCP a routertől |
 
-**Szabad fix címnek:** `.3`–`.17`, `.21`–`.49`, `.52`–`.98`, `.150`–`.254`. Új fix eszközt ide tegyél, és írd be ebbe a táblázatba. A Go2 gyári belső címeit (`.18`, `.20`, és a Unitree-doksi szerinti többit, pl. `.161`) ne oszd ki másnak.
+**Szabad fix címnek:** `.3`–`.17`, `.21`–`.49`, `.53`–`.98`, `.150`–`.254`. Új fix eszközt ide tegyél, és írd be ebbe a táblázatba. A Go2 gyári belső címeit (`.18`, `.20`, és a Unitree-doksi szerinti többit, pl. `.161`) ne oszd ki másnak.
 
 ## Csatlakozás
 
@@ -105,12 +106,12 @@ A Pickerbot hálózati interfészeit NetworkManager kezeli:
 | Interfész | NM profil | Cím | Szerep |
 |---|---|---|---|
 | `eth0` | `Profile 1` | `192.168.123.50/24`, gw `192.168.123.1`, DNS `8.8.8.8 1.1.1.1` | közös robot-háló |
-| `wlan0` | `WHEELTEC_OrinSuper_Noetic_JP515` | `192.168.0.100/24` | saját hotspot (jelszó `dongguan`), DHCP `.109`–`.254` |
-| `wlan1` | `pickerbot-robot-wifi` | `192.168.123.51/24`; kábel nélkül további `.50/32` alias | TP-Link USB adapter, közös robot-háló |
+| `wlan0` | `pickerbot-onboard-wifi` | `192.168.123.52/24`; kábel nélkül további `.50/32` alias | beépített Intel 8265, routerkliens |
+| `wlan1` | `pickerbot-robot-wifi` | `192.168.123.51/24`; csak `wlan0` kiesésekor `.50/32` alias | TP-Link USB adapter, tartalék |
 
-A `wlan1` profilja a roboton `/etc/NetworkManager/system-connections/pickerbot-robot-wifi.nmconnection` helyen van, `root:root`, `0600` jogosultsággal, automatikus kapcsolódással. A jelszó csak ebben a védett profilban van. A profil az Ethernetnél magasabb útvonal-metrikát használ (Wi-Fi 200, Ethernet 100), így bedugott kábelnél a vezetékes út az elsődleges. A `192.168.123.50` ROS-cím az aktív kapcsolaton marad; nem kell átírni a ROS node-ok és a bemutatóoldal címét. A failover-szkript repóbeli forrása [robot-wifi-failover.sh](../scripts/robot-wifi-failover.sh), telepített példánya `/etc/NetworkManager/dispatcher.d/90-pickerbot-wifi-failover`.
+A beépített kliensprofil neve `pickerbot-onboard-wifi`, automatikusan kapcsolódik. A korábbi `WHEELTEC_OrinSuper_Noetic_JP515` hotspot-profil megmaradt, de automatikus indulása ki van kapcsolva. A két mód ugyanazt a `wlan0` rádiót használja, ezért a saját hotspot kliensmód közben nem sugároz. Helyben szükség esetén `sudo nmcli connection up WHEELTEC_OrinSuper_Noetic_JP515 ifname wlan0` paranccsal visszakapcsolható; ezzel megszűnik a TP-Link klienskapcsolat. A `wlan1` profilja a roboton `/etc/NetworkManager/system-connections/pickerbot-robot-wifi.nmconnection` helyen van, `root:root`, `0600` jogosultsággal. A jelszó a védett profilokban van. A Wi-Fi útvonal-metrika 150 (`wlan0`), illetve 200 (`wlan1`), így bedugott kábelnél az Ethernet az elsődleges. A `192.168.123.50` ROS-cím az aktív kapcsolaton marad; nem kell átírni a ROS node-ok és a bemutatóoldal címét. A failover-szkript repóbeli forrása [robot-wifi-failover.sh](../scripts/robot-wifi-failover.sh), telepített példánya `/etc/NetworkManager/dispatcher.d/90-pickerbot-wifi-failover`.
 
-Ellenőrzés a roboton: `nmcli -f DEVICE,STATE,CONNECTION dev status`, `ip -br addr show eth0`, `ip -br addr show wlan1`, `ip route get <laptop-cím> from 192.168.123.50`. Kábel nélkül a legutóbbi parancsban `dev wlan1` kell szerepeljen. Ha a videóalagút a kábel kihúzásakor megszakad, a laptopon futtasd újra `scripts/start-demo-view.ps1 -NoBrowser`; az indító egy valódi kameraképpel ellenőrzi a meglévő alagutat, és szükség esetén újat nyit. A böngészőben a bemutatóoldal újratöltése a ROS WebSocketet is újraköti. A kábeles kapcsolat visszaállítása: `sudo nmcli device connect eth0`.
+Ellenőrzés a roboton: `nmcli -f DEVICE,STATE,CONNECTION dev status`, `ip -br addr show eth0`, `ip -br addr show wlan0`, `ip route get <laptop-cím> from 192.168.123.50`. Kábel nélkül a legutóbbi parancsban `dev wlan0` kell szerepeljen, ha a beépített kapcsolat aktív. Ha a videóalagút a kábel kihúzásakor megszakad, a laptopon futtasd újra `scripts/start-demo-view.ps1 -NoBrowser`; az indító egy valódi kameraképpel ellenőrzi a meglévő alagutat, és szükség esetén újat nyit. A böngészőben a bemutatóoldal újratöltése a ROS WebSocketet is újraköti. A kábeles kapcsolat visszaállítása: `sudo nmcli device connect eth0`.
 
 ROS a `~/.bashrc`-ben (régi értékek kommentben, mentés: `~/.bashrc.bak-20260918`):
 
@@ -121,7 +122,7 @@ export ROS_HOSTNAME=192.168.123.50
 
 Ha a laptopról ROS-t használsz a robot felé: `ROS_MASTER_URI=http://192.168.123.50:11311`, `ROS_IP=<a laptop 192.168.123.x címe>`.
 
-**Következmény:** a robot hotspotjára csatlakozó gép a ROS mastert már nem éri el alapból (csak SSH-t `192.168.0.100`-on). Ha hotspotról kell ROS, ideiglenesen írd vissza a két sort.
+**Következmény:** a robot régi saját hotspotja jelenleg nincs bekapcsolva. Ha kézzel visszakapcsolod, a rá csatlakozó gép a ROS mastert továbbra sem éri el alapból (csak SSH-t `192.168.0.100`-on), mert a ROS a `.50` címet hirdeti.
 
 ### A hiba, amit javítottunk ("rogue DHCP")
 

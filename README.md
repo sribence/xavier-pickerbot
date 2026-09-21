@@ -8,7 +8,7 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 
 **Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Itt a C70 kép, a valódi `/map` és a bázisvezérlés együtt látszik. `-DashboardOnly` kapcsolóval a teljes szenzornézet nyílik meg. A roboton automatikusan futó 8901-es weboldal egy korábban telepített változat; a repó HTML-fájljai nem kerülnek oda pusztán a Git commit vagy push hatására. A webes megállítás nem helyettesíti a fizikai vészleállítót, a kar panelje továbbra is csak szimuláció.
 
-**2026-09-21:** a térkép újrakezdése gombot a felhasználó kipróbálta. A robot TP-Link USB Wi-Fi-je az első próbán kapcsolódott az AP-hoz, később elvesztette a kapcsolatot és most nem talál SSID-t. A vezetékes kapcsolat helyreállt; az élő kamera és térkép ismét működik. Pontos állapot és folytatás: [munkamenet-átadás](docs/11-munkamenet-atadas.md), [hálózat](docs/09-robot-halozat.md).
+**2026-09-21:** a térkép újrakezdése gombot a felhasználó kipróbálta. Az USB Wi-Fi bizonytalan kapcsolata miatt a robot beépített Intel Wi-Fi-jét a TP-Link routerhez kapcsoltuk. Kontrollált, lekapcsolt Ethernet és USB Wi-Fi mellett a robot `.50` címén SSH, valamint a bemutatóoldalon kamera és kezdetben változó térkép működött. A próba végén az Ethernet visszaállt, a beépített Wi-Fi csatlakozva maradt. Hosszabb ellenőrzéskor a `/map` új üzenetei megszűntek, ezt külön kell kivizsgálni. Valódi kábelkihúzás és kábel nélküli újraindítás még nincs igazolva. Részletek: [munkamenet-átadás](docs/11-munkamenet-atadas.md), [hálózat](docs/09-robot-halozat.md).
 
 **Két fejlesztési felület:** a `scripts/control_panel.html` a Kutatók Éjszakája bemutatóoldala, ezen dolgozunk először. A `scripts/dashboard.html` a részletes műszaki szenzornézet, ezt később bővítjük. Az aktuális reboot utáni állapotot a [munkamenet-átadás](docs/11-munkamenet-atadas.md) tartalmazza.
 
@@ -40,7 +40,7 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 | Fedélzeti gép | NVIDIA Jetson Xavier NX, JetPack/L4T 35.6.1 |
 | OS | Ubuntu 20.04.6 LTS |
 | ROS | Noetic (ROS 1, catkin), Python 3.8.10, CUDA 11.4 |
-| IP | `192.168.123.50` (fix, a közös robot-hálón — lásd [docs/09-robot-halozat.md](docs/09-robot-halozat.md)); a saját Wi-Fi hotspotján továbbra is `192.168.0.100` |
+| IP | `192.168.123.50` (ROS-cím Etherneten vagy a beépített Wi-Fi-n); `192.168.123.52` a beépített Wi-Fi saját címe. A régi `192.168.0.100` hotspotprofil mentve maradt, de nem aktív. Lásd [docs/09-robot-halozat.md](docs/09-robot-halozat.md). |
 | SSH | kulcsos, jelszó nélkül — `wheeltec@192.168.123.50`, kulcs: `~/.ssh/pickerbot_mini` |
 | Sudo jelszó | `dongguan` (gyári alapértelmezett — ugyanaz, mint a Wi-Fi hotspot jelszava) |
 | Státusz | élő, tesztelt irányítópult 2026-08-25 óta; kézi vezérlés élőben megerősítve 2026-09-18; oktatási platform terve kész, generálása folyamatban |
