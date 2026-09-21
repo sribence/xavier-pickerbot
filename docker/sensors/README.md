@@ -30,4 +30,4 @@ sudo docker stop pickerbot-web-video pickerbot-c70
 sudo docker rm pickerbot-web-video pickerbot-c70
 ```
 
-A gyári ROS-fájlok és a három meglévő systemd-szolgáltatás nem változtak. A Docker-indítás reboot utáni működését még külön próbával kell igazolni.
+A gyári ROS-fájlok és a három meglévő systemd-szolgáltatás nem változtak. A 2026-09-19-i robot-reboot után a `pickerbot-c70` konténer újraindulási körbe került és nem publikált képet, bár `/dev/RgbCam` újra `/dev/video0`-ra mutatott. A `recover-c70.sh` a konténert újra létrehozta, és friss ROS-képkockát igazolt. Tehát a Docker automatikus restartja önmagában nem bizonyult elégségesnek; a reboot utáni kameraképet külön ellenőrizni kell. A LiDAR/SLAM konténerek futottak, a `/map` publikálója visszatért. Az USB-leválás hardveres okát külön kell megkeresni.

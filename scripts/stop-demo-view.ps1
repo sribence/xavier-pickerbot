@@ -5,9 +5,9 @@ if (-not (Test-Path -LiteralPath $stateFile)) {
     exit 0
 }
 $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
-foreach ($entry in @(@($state.serverPid, 'python'), @($state.tunnelPid, 'ssh'))) {
+foreach ($entry in @(@($state.serverPid, @('python')), @($state.tunnelPid, @('ssh', 'plink')))) {
     $process = Get-Process -Id $entry[0] -ErrorAction SilentlyContinue
-    if ($process -and $process.ProcessName -eq $entry[1]) {
+    if ($process -and $process.ProcessName -in $entry[1]) {
         Stop-Process -Id $process.Id
     }
 }

@@ -8,6 +8,10 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 
 **Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Itt a C70 kép, a valódi `/map` és a bázisvezérlés együtt látszik. `-DashboardOnly` kapcsolóval a teljes szenzornézet nyílik meg. A roboton automatikusan futó 8901-es weboldal egy korábban telepített változat; a repó HTML-fájljai nem kerülnek oda pusztán a Git commit vagy push hatására. A webes megállítás nem helyettesíti a fizikai vészleállítót, a kar panelje továbbra is csak szimuláció.
 
+**2026-09-21:** a térkép újrakezdése gombot a felhasználó kipróbálta. A robot TP-Link USB Wi-Fi-je az első próbán kapcsolódott az AP-hoz, később elvesztette a kapcsolatot és most nem talál SSID-t. A vezetékes kapcsolat helyreállt; az élő kamera és térkép ismét működik. Pontos állapot és folytatás: [munkamenet-átadás](docs/11-munkamenet-atadas.md), [hálózat](docs/09-robot-halozat.md).
+
+**Két fejlesztési felület:** a `scripts/control_panel.html` a Kutatók Éjszakája bemutatóoldala, ezen dolgozunk először. A `scripts/dashboard.html` a részletes műszaki szenzornézet, ezt később bővítjük. Az aktuális reboot utáni állapotot a [munkamenet-átadás](docs/11-munkamenet-atadas.md) tartalmazza.
+
 ## Tartalomjegyzék
 
 - [docs/00-hozzaferes.md](docs/00-hozzaferes.md) — hálózat, SSH, hogyan köss rá egy laptopot
@@ -20,6 +24,7 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 - [docs/07-ismert-hibak.md](docs/07-ismert-hibak.md) — hibajelenség → ok → javítás táblázat, drágán megszerzett tudás
 - [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md) — **saját projekt #3**: kézi vezérlés (bázis-drive valós-képes ÉLESÍTÉS mögött, kar MOCK-ONLY); a `/cmd_vel` 2026-09-18-án élőben megerősítve
 - [docs/10-bemutato-terkep.md](docs/10-bemutato-terkep.md) — a C70 kamera + valódi `/map` bemutató állapota és ellenőrzési sorrendje
+- [docs/11-munkamenet-atadas.md](docs/11-munkamenet-atadas.md) — az aktuális állapot és a következő fejlesztőnek szóló átadás
 - [docs/09-robot-halozat.md](docs/09-robot-halozat.md) — **a közös robot-hálózat** (2026-09-18): gateway PC + TP-Link router, IP-kiosztás, elérés, hibaelhárítás
 - [scripts/](scripts/) — a ténylegesen használt kapcsolódó/indító szkriptek, másolható egy az egyben
 - [docker/sensors/](docker/sensors/) — a C70 kamera és a csak helyben elérhető videófolyam Docker-indítása

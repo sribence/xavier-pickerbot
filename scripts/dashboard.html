@@ -2,7 +2,7 @@
 <html lang="hu">
 <head>
 <meta charset="UTF-8">
-<title>Pickerbot Mini — élő irányítópult</title>
+<title>Pickerbot Mini — műszaki szenzornézet</title>
 <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -50,6 +50,10 @@
     font-size:0.78rem; color:var(--muted); letter-spacing:0.04em; text-transform:uppercase;
   }
   .panel-head .pill { font-size:0.68rem; color:var(--faint); text-transform:none; letter-spacing:0; }
+  .map-actions { display:flex; align-items:center; gap:0.7rem; }
+  .map-reset { border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--text); padding:0.3rem 0.5rem; font:inherit; font-size:0.68rem; letter-spacing:0; text-transform:none; cursor:pointer; }
+  .map-reset:hover, .map-reset:focus-visible { border-color:var(--accent); }
+  .map-reset:disabled { opacity:0.5; cursor:wait; }
   .panel-body { flex:1; position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; }
   .panel-body img { max-width:100%; max-height:100%; display:block; }
   .panel-body canvas { display:block; }
@@ -77,7 +81,7 @@
 <body>
 
 <header>
-  <h1>Pickerbot Mini — élő irányítópult</h1>
+  <h1>Pickerbot Mini — műszaki szenzornézet</h1>
   <span id="globalStatus">csatlakozás...</span>
 </header>
 
@@ -93,7 +97,7 @@
       </div>
     </div>
     <div class="panel">
-      <div class="panel-head"><span>Épülő 2D térkép</span><span class="pill">/map · SLAM</span></div>
+      <div class="panel-head"><span>Épülő 2D térkép</span><span class="map-actions"><span class="pill">/map · SLAM</span><button class="map-reset" id="resetMapBtn" type="button" title="A SLAM belső térképét törli, majd újra kezdi az építést">Térkép újrakezdése</button></span></div>
       <div class="panel-body map-body">
         <canvas id="mapCanvas" aria-label="A 2D LiDAR által épített foglaltsági térkép" hidden></canvas>
         <span id="mapPlaceholder" class="map-placeholder">Várakozás a /map adatra. A nyers /scan felülnézet nem térkép; ehhez futó SLAM szükséges.</span>
@@ -171,7 +175,8 @@ const ROSBRIDGE_PORT = 9090;
 // ---------- image streams via web_video_server (csak sima 8-bit szinű képekhez jó) ----------
 if (!EMBEDDED) document.getElementById('rgbImg').src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
 const c70Img = document.getElementById('c70Img');
-const c70StreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/usb_cam/image_raw`;
+// A teljes 640×480/95% MJPEG túl sok adatot torlasztott a kapcsolatban.
+const c70StreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/usb_cam/image_raw&width=320&height=240&quality=55`;
 
 // ---------- rosbridge connection ----------
 const ros = new ROSLIB.Ros({ url: `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}` });
@@ -189,9 +194,12 @@ const mapCanvas = document.getElementById('mapCanvas');
 const mapCtx = mapCanvas.getContext('2d');
 const mapStatus = document.getElementById('mapStatus');
 const mapPlaceholder = document.getElementById('mapPlaceholder');
+const resetMapBtn = document.getElementById('resetMapBtn');
 let lastMapArrival = 0;
 let mapUpdates = 0;
 let lastMapHash = null;
+let mapResetting = false;
+let mapIgnoreBeforeMs = 0;
 
 function mapCells(data) {
   if (Array.isArray(data)) return data;
@@ -203,6 +211,11 @@ function mapCells(data) {
 }
 
 function drawMap(msg) {
+  if (mapResetting) return;
+  const stamp = msg.header?.stamp;
+  const stampMs = stamp && Number.isFinite(stamp.secs) && Number.isFinite(stamp.nsecs)
+    ? stamp.secs * 1000 + stamp.nsecs / 1e6 : 0;
+  if (mapIgnoreBeforeMs && stampMs && stampMs < mapIgnoreBeforeMs) return;
   const w = msg.info?.width, h = msg.info?.height;
   if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w * h > 10000000) return;
   let cells;
@@ -236,7 +249,33 @@ function drawMap(msg) {
   mapStatus.textContent = `${state} · ${w}×${h} · ${msg.info.resolution.toFixed(3)} m/cella · ${frame}`;
 }
 mapTopic.subscribe(drawMap);
+resetMapBtn.addEventListener('click', async () => {
+  if (!window.confirm('Töröljük az eddig épített térképet, és kezdjük újra?')) return;
+  mapResetting = true;
+  resetMapBtn.disabled = true;
+  mapStatus.textContent = 'Térkép: a SLAM újraindítása folyamatban...';
+  try {
+    const response = await fetch('/api/reset-map', {
+      method: 'POST', headers: { 'X-Pickerbot-Action': 'reset-map' }, body: ''
+    });
+    if (!response.ok) throw new Error('A robot nem válaszolt a térkép újraindítására.');
+    mapIgnoreBeforeMs = Date.now() - 1000;
+    mapCanvas.hidden = true;
+    mapPlaceholder.hidden = false;
+    mapPlaceholder.textContent = 'A térkép törölve. Új /map adatokra várunk.';
+    lastMapArrival = 0;
+    mapUpdates = 0;
+    lastMapHash = null;
+    mapStatus.textContent = 'Térkép: újraindítva, épül';
+  } catch (error) {
+    mapStatus.textContent = `Térkép: újraindítás sikertelen · ${error.message}`;
+  } finally {
+    mapResetting = false;
+    resetMapBtn.disabled = false;
+  }
+});
 setInterval(() => {
+  if (mapResetting) return;
   if (!ros.isConnected) { mapStatus.textContent = 'Térkép: nincs ROS-kapcsolat'; return; }
   if (!lastMapArrival) { mapStatus.textContent = 'Térkép: nincs /map üzenet'; return; }
   if (Date.now() - lastMapArrival > 15000) mapStatus.textContent = 'Térkép: nem frissül (15+ mp) · ellenőrizd a SLAM-et és a TF-et';
@@ -260,7 +299,9 @@ let c70MjpegStarted = false;
 let lastC70Frame = 0;
 const c70Topic = new ROSLIB.Topic({
   ros, name: '/usb_cam/image_raw', messageType: 'sensor_msgs/Image',
-  throttle_rate: 500, queue_length: 1
+  // Egy nyers kocka ~1,2 MB a rosbridge-en. Ritkábban kérjük, hogy a
+  // kapcsolat ne halmozzon fel sok másodperces, elavult képeket.
+  throttle_rate: 2000, queue_length: 1
 });
 
 function onC70RosImage(msg) {
@@ -290,16 +331,26 @@ function onC70RosImage(msg) {
   c70Ctx.putImageData(frame, 0, 0);
   c70Canvas.hidden = false;
   lastC70Frame = Date.now();
-  c70Status.textContent = `Kamera: ROS-kép · ${w}×${h}`;
+  const stamp = msg.header?.stamp;
+  const captureMs = stamp && Number.isFinite(stamp.secs) && Number.isFinite(stamp.nsecs)
+    ? stamp.secs * 1000 + stamp.nsecs / 1e6 : NaN;
+  const lagSeconds = Number.isFinite(captureMs)
+    ? Math.max(0, (lastC70Frame - captureMs) / 1000).toFixed(1) : '?';
+  c70Status.textContent = `Kamera: ROS-kép · ${w}×${h} · ${lagSeconds} s késés`;
 }
 
 function startC70Fallback() {
   if (c70FallbackStarted) return;
   c70FallbackStarted = true;
   c70MjpegStarted = false;
-  c70Status.textContent = 'Kamera: tartalék ROS-kapcsolatra vár';
   c70Img.hidden = true;
-  c70Topic.subscribe(onC70RosImage);
+  if (EMBEDDED) {
+    // A késő nyers ROS-kép a bemutatón félrevezető, és a térképet is lassítja.
+    c70Status.textContent = 'Kamera: videókapcsolat megszakadt — indítsd újra a bemutató indítóját';
+  } else {
+    c70Status.textContent = 'Kamera: tartalék ROS-kapcsolatra vár';
+    c70Topic.subscribe(onC70RosImage);
+  }
 }
 
 c70Img.addEventListener('load', () => {
@@ -315,11 +366,36 @@ c70Img.src = c70StreamUrl;
 setTimeout(() => {
   if (!c70MjpegStarted && !c70Img.naturalWidth) startC70Fallback();
 }, 5000);
+let checkingC70Connection = false;
+function checkC70Connection() {
+  if ((!c70MjpegStarted && !c70FallbackStarted) || checkingC70Connection) return;
+  checkingC70Connection = true;
+  // Valódi JPEG-kockát kérünk: a szerver HTTP-válasza önmagában nem bizonyítja,
+  // hogy a kamera is ad képet. Az iframe újratöltése a vezérlőpultot nem érinti.
+  const probe = new Image();
+  const deadline = setTimeout(() => {
+    probe.onload = probe.onerror = null;
+    checkingC70Connection = false;
+    startC70Fallback();
+  }, 15000);
+  probe.onload = () => {
+    clearTimeout(deadline);
+    checkingC70Connection = false;
+    if (EMBEDDED && c70FallbackStarted) window.location.reload();
+  };
+  probe.onerror = () => {
+    clearTimeout(deadline);
+    checkingC70Connection = false;
+    startC70Fallback();
+  };
+  probe.src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/snapshot?topic=/usb_cam/image_raw&width=320&height=240&quality=55&_=${Date.now()}`;
+}
+setInterval(checkC70Connection, 8000);
 setInterval(() => {
-  if (c70FallbackStarted && lastC70Frame && Date.now() - lastC70Frame > 15000) {
+  if (!EMBEDDED && c70FallbackStarted && lastC70Frame && Date.now() - lastC70Frame > 15000) {
     c70Status.textContent = 'Kamera: a ROS-kép nem frissül (15+ mp)';
   }
-  if (c70FallbackStarted) c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
+  if (!EMBEDDED && c70FallbackStarted) c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
 }, 8000);
 
 // A beágyazott nézet csak a C70-et és a /map-et kéri le. A többi szenzor

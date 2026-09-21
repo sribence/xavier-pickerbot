@@ -12,27 +12,35 @@ $url = if ($DashboardOnly) {
     'http://127.0.0.1:8902/scripts/control_panel.html'
 }
 
-if (-not (Test-Path -LiteralPath $key) -or -not (Test-Path -LiteralPath $knownHosts)) {
-    throw 'A Pickerbot SSH-kulcs vagy known_hosts fájl hiányzik.'
+if (-not (Test-Path -LiteralPath $knownHosts)) {
+    throw 'A Pickerbot known_hosts fájl hiányzik.'
 }
 if (Test-Path -LiteralPath $stateFile) {
     $previous = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
     $oldServer = Get-Process -Id $previous.serverPid -ErrorAction SilentlyContinue
     $oldTunnel = Get-Process -Id $previous.tunnelPid -ErrorAction SilentlyContinue
-    
+    if ($oldServer -and $oldServer.ProcessName -ne 'python') { $oldServer = $null }
+    if ($oldTunnel -and $oldTunnel.ProcessName -notin @('ssh', 'plink')) { $oldTunnel = $null }
+
+    if ($oldTunnel -and -not $oldTunnel.HasExited) {
+        try {
+            $videoProbe = Invoke-WebRequest 'http://127.0.0.1:8080/snapshot?topic=/usb_cam/image_raw&width=320&height=240&quality=55' -UseBasicParsing -TimeoutSec 15
+            if ($videoProbe.StatusCode -ne 200 -or $videoProbe.Headers['Content-Type'] -notlike 'image/jpeg*') {
+                throw 'A videóalagút nem ad élő JPEG-képet.'
+            }
+        } catch {
+            Stop-Process -Id $oldTunnel.Id -Force -ErrorAction SilentlyContinue
+            $oldTunnel = $null
+        }
+    }
+
     if ($oldServer -and $oldTunnel -and -not $oldServer.HasExited -and -not $oldTunnel.HasExited) {
         Write-Host "A bemutatónézet és az SSH-alagút már fut: $url"
         if (-not $NoBrowser) { Start-Process $url }
         exit 0
     }
-
-    # Ha bármelyik folyamat leállt (pl. robot újraindításkor az SSH-alagút megszakadt),
-    # a megmaradt féloldalas folyamatot leállítjuk az automatikus helyreállításhoz.
-    if ($oldServer -and -not $oldServer.HasExited) { Stop-Process -Id $oldServer.Id -Force -ErrorAction SilentlyContinue }
-    if ($oldTunnel -and -not $oldTunnel.HasExited) { Stop-Process -Id $oldTunnel.Id -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $stateFile -ErrorAction SilentlyContinue
 }
-foreach ($port in 8080, 8902) {
+foreach ($port in @(if (-not $oldTunnel) { 8080 }; if (-not $oldServer) { 8902 })) {
     $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)
     try { $probe.Start() }
     catch { throw "A helyi $port port már használatban van." }
@@ -50,15 +58,73 @@ $sshArgs = @(
     '-o', "UserKnownHostsFile=$knownHosts",
     'wheeltec@192.168.123.50'
 )
-$tunnel = Start-Process -FilePath 'ssh.exe' -ArgumentList $sshArgs -PassThru -WindowStyle Hidden
+$tunnel = $oldTunnel
+$server = $oldServer
+$newTunnel = $null
+$newServer = $null
 try {
-    Start-Sleep -Seconds 2
-    if ($tunnel.HasExited) { throw 'Az SSH-alagút nem indult el.' }
+    if (-not $tunnel) {
+        $passwordFile = $null
+        try {
+            $keyReadable = $false
+            if (Test-Path -LiteralPath $key) {
+                try {
+                    $keyStream = [System.IO.File]::OpenRead($key)
+                    $keyStream.Dispose()
+                    $keyReadable = $true
+                } catch { $keyReadable = $false }
+            }
+            if ($keyReadable) {
+                $tunnel = Start-Process -FilePath 'ssh.exe' -ArgumentList $sshArgs -PassThru -WindowStyle Hidden
+            } else {
+                # A Codex Windows-fiók néha nem olvashatja a privát kulcsot.
+                # A dokumentált jelszó csak rövid életű helyi fájlba kerül; a hostkulcsot rögzítjük.
+                $plink = Get-Command 'plink.exe' -ErrorAction SilentlyContinue
+                if (-not $plink) { throw 'Az SSH-kulcs nem olvasható, és a PuTTY plink.exe sem érhető el.' }
+                $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
+                $passwordMatch = [regex]::Match($readme, '\| Sudo jelszó \| `([^`]+)`')
+                if (-not $passwordMatch.Success) { throw 'A dokumentált robotjelszó nem található.' }
+                $hostKeyLine = & ssh-keygen.exe -lf $knownHosts |
+                    Where-Object { $_ -match '192\.168\.123\.50' } | Select-Object -First 1
+                if ($hostKeyLine -notmatch 'SHA256:[A-Za-z0-9+/]+') {
+                    throw 'A robot hostkulcsának ujjlenyomata nem olvasható.'
+                }
+                $hostKey = $Matches[0]
+                $passwordFile = Join-Path $env:TEMP ('pickerbot-demo-pw-' + [guid]::NewGuid().ToString('N') + '.txt')
+                [System.IO.File]::WriteAllText($passwordFile, $passwordMatch.Groups[1].Value + "`n", [System.Text.UTF8Encoding]::new($false))
+                $plinkArgs = @('-ssh', '-batch', '-N', '-L', '127.0.0.1:8080:127.0.0.1:8080',
+                    '-l', 'wheeltec', '-pwfile', $passwordFile, '-hostkey', $hostKey, '192.168.123.50')
+                $tunnel = Start-Process -FilePath $plink.Source -ArgumentList $plinkArgs -PassThru -WindowStyle Hidden
+            }
+            $newTunnel = $tunnel
+            $tunnelReady = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+                Start-Sleep -Milliseconds 500
+                if ($tunnel.HasExited) { break }
+                $probe = [System.Net.Sockets.TcpClient]::new()
+                try {
+                    $probe.Connect('127.0.0.1', 8080)
+                    $tunnelReady = $true
+                    break
+                } catch {
+                    # Wi-Fi-n az SSH-hitelesítés a korábbi fix 2 másodpercnél tovább tarthat.
+                } finally {
+                    $probe.Dispose()
+                }
+            }
+            if (-not $tunnelReady) { throw 'Az SSH-alagút 15 másodperc alatt sem indult el.' }
+        } finally {
+            if ($passwordFile) { Remove-Item -LiteralPath $passwordFile -ErrorAction SilentlyContinue }
+        }
+    }
 
-    $serverArgs = @('-m', 'http.server', '8902', '--bind', '127.0.0.1', '--directory', $repoRoot)
-    $server = Start-Process -FilePath 'python.exe' -ArgumentList $serverArgs -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 2
-    if ($server.HasExited) { throw 'A helyi bemutatóoldal nem indult el.' }
+    if (-not $server) {
+        $serverArgs = @((Join-Path $PSScriptRoot 'demo_server.py'), '--port', '8902')
+        $server = Start-Process -FilePath 'python.exe' -ArgumentList $serverArgs -PassThru -WindowStyle Hidden
+        $newServer = $server
+        Start-Sleep -Seconds 2
+        if ($server.HasExited) { throw 'A helyi bemutatóoldal nem indult el.' }
+    }
 
     @{ tunnelPid = $tunnel.Id; serverPid = $server.Id } |
         ConvertTo-Json | Set-Content -LiteralPath $stateFile -Encoding UTF8
@@ -66,7 +132,7 @@ try {
     Write-Host "Bemutató: $url"
     Write-Host 'Leállítás: scripts\stop-demo-view.ps1'
 } catch {
-    if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -ErrorAction SilentlyContinue }
-    if (-not $tunnel.HasExited) { Stop-Process -Id $tunnel.Id -ErrorAction SilentlyContinue }
+    if ($newServer -and -not $newServer.HasExited) { Stop-Process -Id $newServer.Id -ErrorAction SilentlyContinue }
+    if ($newTunnel -and -not $newTunnel.HasExited) { Stop-Process -Id $newTunnel.Id -ErrorAction SilentlyContinue }
     throw
 }

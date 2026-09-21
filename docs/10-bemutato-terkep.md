@@ -4,7 +4,11 @@
 
 Az önálló `xavier-pickerbot` repóban a `scripts/start-demo-view.ps1` alapból a `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. A C70 kamera és a valódi `/map` a bázisvezérlés mellett látszik; a beágyazott szenzornézet nem indítja el a rejtett Astra- és 3D-feldolgozást. A teljes szenzornézet a fejléc linkjén vagy a `-DashboardOnly` kapcsolóval nyitható meg. A helyi HTTP-szerver a repó gyökerét szolgálja ki, így a dokumentációs linkek működnek.
 
+**Legfrissebb átadás:** [11-munkamenet-atadas.md](11-munkamenet-atadas.md). A `control_panel.html` a bemutatóoldal, a `dashboard.html` a később fejlesztendő műszaki szenzornézet.
+
 A helyi fájlmódosítás és Git push **nem telepíti** ezt az új oldalt a robot 8901-es webkiszolgálójára. A korábbi, lent részletezett mérések történeti állapotot írnak le. A webes megállító hálózatfüggő; bemutatón és mozgáspróbán legyen kéznél a fizikai leállító. A kar kezelőfelülete továbbra is szimuláció, a daráló/sípoló fel-le ízületet mozgás előtt áramtalanítva kell átvizsgálni.
+
+**2026-09-19, újabb robot-reboot és későbbi kamerajavítás:** a három `pickerbot-*` systemd-szolgáltatás aktív lett, a `/map` publikálója visszatért. A C70 `/dev/video0` néven jelent meg, de a kamerakonténer újraindulási körben volt, és nem publikált képet. A [recover-c70.sh](../docker/sensors/recover-c70.sh) a C70-konténert az aktuális eszközhöz újra létrehozta, friss `/usb_cam/image_raw` képkockát igazolt és sikeresen kilépett. A korábbi tartalék ROS-kép 1–1,5 másodpercenként cserélődött, de a mozgást a felhasználó 15 másodperc késéssel látta. Ezután a helyi kulcs olvasási hibáját Plink-tartalék kapcsolattal áthidaltuk, és a C70 MJPEG URL-jében 320×240-es képet kértünk 55-ös JPEG-minőséggel. Későbbi mérés szerint a szerver valójában 640×480-at küld: az URL méretparamétere nem érvényesül. A felhasználó az élő bemutatóoldalon **1 másodperc alatti** mozgáskésést mért. Kontrollált alagút-megszakítás után az indító újrafuttatásával a kép kézi oldalfrissítés nélkül visszatért. A részletes mérés és az aktuális korlátok a [munkamenet-átadásban](11-munkamenet-atadas.md) vannak.
 
 ## Állapot és helyreállítás (2026-09-18)
 
