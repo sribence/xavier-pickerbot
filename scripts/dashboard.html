@@ -176,7 +176,8 @@ const ROSBRIDGE_PORT = 9090;
 if (!EMBEDDED) document.getElementById('rgbImg').src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
 const c70Img = document.getElementById('c70Img');
 // A teljes 640×480/95% MJPEG túl sok adatot torlasztott a kapcsolatban.
-const c70StreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/usb_cam/image_raw&width=320&height=240&quality=55`;
+// A helyi szerver (demo_server.py) egyetlen robot-oldali folyamot oszt meg az összes nyitott fül között.
+const c70StreamUrl = `/cam/c70.mjpg?relay=1`;
 
 // ---------- rosbridge connection ----------
 const ros = new ROSLIB.Ros({ url: `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}` });
@@ -258,7 +259,11 @@ resetMapBtn.addEventListener('click', async () => {
     const response = await fetch('/api/reset-map', {
       method: 'POST', headers: { 'X-Pickerbot-Action': 'reset-map' }, body: ''
     });
-    if (!response.ok) throw new Error('A robot nem válaszolt a térkép újraindítására.');
+    if (!response.ok) {
+      let reason = 'A robot nem válaszolt a térkép újraindítására.';
+      try { const data = await response.json(); if (data && data.error) reason = data.error; } catch (e) { /* nem JSON válasz */ }
+      throw new Error(reason);
+    }
     mapIgnoreBeforeMs = Date.now() - 1000;
     mapCanvas.hidden = true;
     mapPlaceholder.hidden = false;

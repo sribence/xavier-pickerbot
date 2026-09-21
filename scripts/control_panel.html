@@ -121,6 +121,16 @@
   .log .mock { color:var(--muted); }
   .log .sim { color:var(--warm); }
 
+  .telemetry { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0.6rem; margin-bottom:0.8rem; }
+  .tele { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:0.5rem 0.7rem; min-width:0; }
+  .tele .k { font-size:0.68rem; color:var(--muted); letter-spacing:0.03em; text-transform:uppercase; }
+  .tele .v { font-size:1.0rem; margin-top:0.15rem; color:var(--text); }
+  .tele .s { font-size:0.68rem; color:var(--faint); margin-top:0.1rem; line-height:1.35; }
+  .tele.ok .v { color:var(--good); }
+  .tele.warn .v { color:var(--warm); }
+  .tele.bad .v { color:var(--bad); }
+  .tele.stale .v { color:var(--faint); }
+
   .camera-embed { border:0; width:100%; height:480px; background:var(--bg); }
   .embed-note { font-size:0.72rem; color:var(--faint); padding:0.4rem 0.8rem; }
   @media (max-width:520px) { .camera-embed { height:900px; } }
@@ -220,8 +230,13 @@
   </div>
 
   <div class="panel log-panel">
-    <div class="panel-head"><span>Parancsnapló</span></div>
+    <div class="panel-head"><span>Telemetria és parancsnapló</span><span class="tag live">csak olvasás</span></div>
     <div class="panel-body">
+      <div class="telemetry">
+        <div class="tele stale" id="teBattery"><div class="k">Akku (/PowerVoltage)</div><div class="v">—</div><div class="s">nincs adat</div></div>
+        <div class="tele stale" id="teSpeed"><div class="k">Tényleges sebesség (/odom)</div><div class="v">—</div><div class="s">nincs adat</div></div>
+        <div class="tele stale" id="teTurn"><div class="k">Forgás (/odom, /imu)</div><div class="v">—</div><div class="s">nincs adat</div></div>
+      </div>
       <div class="log" id="logBox"></div>
     </div>
   </div>
@@ -465,6 +480,92 @@ setInterval(() => {
 
 updateReadout();
 log('mock', "vezérlőpult betöltve — bázis: nincs élesítve, kar: mindig szimuláció");
+
+
+// ================= TELEMETRIA — CSAK OLVASÁS =================
+// Ez a szekció semmit nem publikál. Az /odom és /imu üzenetek 10 Hz-re ritkítva jönnek, hogy a Wi-Fit ne terheljék.
+// A tényleges forgási sebesség a fizikai távirányítóval végzett mozgásnál is látszik, ezért a webes csúszka
+// helyett ez jelzi, ha a robot gyorsabban fordul, mint amit a térképezés elbír. A határ becslés (lásd fent).
+const TELE_STALE_MS = 3000;
+const BATTERY_WARN_V = 21.5;   // becslés: a 2026-09-18-i mérésnél 21.9 V még stabil volt, 17.74 V-nál a szervók elengedtek
+const BATTERY_BAD_V = 20.0;    // becslés, nem mért érték
+const tele = { battery: null, batteryAt: 0, odom: null, odomAt: 0, imuZ: null, imuAt: 0, turnHist: [], lastTurnWarn: 0 };
+
+function setTile(id, cls, value, sub) {
+  const el = document.getElementById(id);
+  el.className = 'tele ' + cls;
+  el.querySelector('.v').textContent = value;
+  el.querySelector('.s').textContent = sub;
+}
+function finite(v) { return typeof v === 'number' && isFinite(v); }
+
+// A /PowerVoltage üzenettípusát szándékosan nem adjuk meg: a rosbridge felismeri; a mezőt a kód ellenőrzi.
+const batteryTopic = new ROSLIB.Topic({ ros, name: '/PowerVoltage', throttle_rate: 500, queue_length: 1 });
+batteryTopic.subscribe((m) => {
+  const v = m && (finite(m.data) ? m.data : null);
+  if (v === null) return;
+  tele.battery = v; tele.batteryAt = Date.now();
+});
+const odomTopic = new ROSLIB.Topic({ ros, name: '/odom', messageType: 'nav_msgs/Odometry', throttle_rate: 100, queue_length: 1 });
+odomTopic.subscribe((m) => {
+  const t = m && m.twist && m.twist.twist;
+  if (!t || !t.linear || !t.angular || !finite(t.linear.x) || !finite(t.linear.y) || !finite(t.angular.z)) return;
+  tele.odom = { x: t.linear.x, y: t.linear.y, az: t.angular.z }; tele.odomAt = Date.now();
+});
+const imuTopic = new ROSLIB.Topic({ ros, name: '/imu', messageType: 'sensor_msgs/Imu', throttle_rate: 100, queue_length: 1 });
+imuTopic.subscribe((m) => {
+  const z = m && m.angular_velocity && m.angular_velocity.z;
+  if (!finite(z)) return;
+  tele.imuZ = z; tele.imuAt = Date.now();
+});
+
+function renderTelemetry() {
+  const now = Date.now();
+  const fresh = (at) => now - at < TELE_STALE_MS;
+
+  if (tele.battery !== null && fresh(tele.batteryAt)) {
+    const v = tele.battery;
+    const cls = v < BATTERY_BAD_V ? 'bad' : (v < BATTERY_WARN_V ? 'warn' : 'ok');
+    setTile('teBattery', cls, v.toFixed(2) + ' V',
+      cls === 'ok' ? 'rendben (határok becslések)' : 'alacsony akkufeszültség — töltsd, mielőtt a kar/bázis mozog');
+  } else {
+    setTile('teBattery', 'stale', '—', 'nincs friss adat');
+  }
+
+  if (tele.odom && fresh(tele.odomAt)) {
+    const lin = Math.hypot(tele.odom.x, tele.odom.y);
+    setTile('teSpeed', 'ok', lin.toFixed(2) + ' m/s',
+      `x ${tele.odom.x.toFixed(2)} · y ${tele.odom.y.toFixed(2)} m/s (kerékodometria)`);
+  } else {
+    setTile('teSpeed', 'stale', '—', 'nincs friss adat');
+  }
+
+  const haveOdom = tele.odom && fresh(tele.odomAt);
+  const haveImu = tele.imuZ !== null && fresh(tele.imuAt);
+  if (haveOdom || haveImu) {
+    const az = Math.max(haveOdom ? Math.abs(tele.odom.az) : 0, haveImu ? Math.abs(tele.imuZ) : 0);
+    tele.turnHist.push({ t: now, v: az });
+    while (tele.turnHist.length && now - tele.turnHist[0].t > 5000) tele.turnHist.shift();
+    const peak = tele.turnHist.reduce((a, h) => Math.max(a, h.v), 0);
+    const over = peak > ANGULAR_MAP_WARN_RADPS;
+    const cls = over ? 'bad' : (peak > ANGULAR_MAP_WARN_RADPS * 0.75 ? 'warn' : 'ok');
+    const parts = [];
+    if (haveOdom) parts.push(`odom ${tele.odom.az.toFixed(2)}`);
+    if (haveImu) parts.push(`IMU ${tele.imuZ.toFixed(2)}`);
+    setTile('teTurn', cls, peak.toFixed(2) + ' rad/s (max 5 s)',
+      over ? `⚠ gyors fordulás: a térkép szétcsúszhat (határ ~${ANGULAR_MAP_WARN_RADPS.toFixed(1)}, becslés) · ${parts.join(' · ')}`
+           : parts.join(' · ') + ' rad/s');
+    if (over && now - tele.lastTurnWarn > 5000) {
+      tele.lastTurnWarn = now;
+      log('mock', `Figyelem: mért forgás ${peak.toFixed(2)} rad/s — a térképezés szétcsúszhat`);
+    }
+  } else {
+    tele.turnHist = [];
+    setTile('teTurn', 'stale', '—', 'nincs friss adat');
+  }
+}
+setInterval(renderTelemetry, 300);
+renderTelemetry();
 
 // ================= KAR + GRIPPER — MINDIG SZIMULÁCIÓ =================
 // Ez a szekció szándékosan SOHA nem hív rosbridge-et. A csúszkák csak a
