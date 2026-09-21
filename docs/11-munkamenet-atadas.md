@@ -117,3 +117,11 @@ Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó j
 **Kamerakésés:** a felhasználó szerint a kép a mérés idején késni kezdett. A késés nincs számszerűen mérve. A ~15 Mbit/s tartós feltöltés a 640×480-as MJPEG-folyamból adódhat; a kisebb felbontású/kevesebb képkockás forrás a forgalmat csökkentené, de ezt még nem próbáltuk ki.
 
 **Következő lépések:** (1) a joystick/távirányító sebességfokozatának vagy szögsebesség-korlátjának felkutatása, és térképezéskor lassú fordulás (kb. 0,1 rad/scan alatt, azaz 1 rad/s alatt); (2) az IMU szabálytalan időzítésének vizsgálata; (3) kamera: kisebb felbontás/képkockaszám a forrásnál (robotoldali változtatás, külön jóváhagyással).
+
+### 2026-09-21: forgási sebesség csúszka a bemutatóoldalon
+
+- `scripts/control_panel.html`: a bázispanelen új **forgási sebesség** csúszka (0,10–1,00 rad/s, alapérték és újratöltés utáni érték 0,30 rad/s, tehát a korábbi plafon változatlan). Piros vonal jelöli a 0,60 rad/s határt; fölötte figyelmeztetés jelenik meg és a naplóba is bekerül. Csökkentéskor a már kiküldött forgás azonnal az új határra vágódik.
+- **Csak a webes forgatógombokra vonatkozik**, a fizikai távirányítót nem korlátozza (az az alsó vezérlőhöz kapcsolódik). A lineáris plafon (0,15 m/s) és a `base_drive.py` értékei nem változtak.
+- A 0,60 rad/s határ **becslés, nem mért érték** (12 Hz-es LiDAR mellett kb. 0,05 rad/szkennelés). A mért összeomlás sokkal magasabb sebességnél történt (kb. 0,5 rad/szkennelés).
+- Ellenőrzés: az inline JavaScript `node --check` alatt hibamentes; headless böngészőben (ROS-tár nélkül, csonkolt `ROSLIB`-bal) a csúszka, a figyelmeztetés és a kiírt plafon a várt módon változott, JS-hiba nélkül. Valódi robottal, élesítéssel **nem** próbáltuk ki.
+- Új `.gitignore`: `slam-diagnosztika.txt` (a diagnosztikai szkript kimenete), Python-gyorsítótárak.

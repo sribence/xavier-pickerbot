@@ -95,6 +95,17 @@
   .slider-row input[type=range] { flex:1; }
   .slider-row .val { width:56px; text-align:right; font-size:0.78rem; color:var(--accent); flex:none; }
 
+  .limit-box { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:0.7rem 0.8rem; margin-bottom:1rem; }
+  .limit-box .slider-row { margin-bottom:0.2rem; }
+  .limit-box .slider-row label { width:120px; }
+  .range-wrap { position:relative; flex:1; }
+  .range-wrap input[type=range] { width:100%; margin:0; display:block; }
+  .warn-mark { position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--bad); pointer-events:none; }
+  .limit-note { font-size:0.7rem; color:var(--faint); line-height:1.45; }
+  .limit-warn { display:none; font-size:0.74rem; color:var(--bad); line-height:1.45; margin-top:0.4rem; }
+  .limit-box.over .limit-warn { display:block; }
+  .limit-box.over .slider-row .val { color:var(--bad); }
+
   .gripper-row { display:flex; gap:0.6rem; margin-top:1rem; }
   .gripper-row button {
     flex:1; font-family:inherit; padding:0.6rem; border-radius:8px; border:1px solid var(--border);
@@ -140,6 +151,19 @@
       <div class="arm-toggle">
         <button id="armBtn" disabled>ÉLESÍTÉS</button>
         <span class="state" id="armState">nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra</span>
+      </div>
+
+      <div class="limit-box" id="angLimitBox">
+        <div class="slider-row">
+          <label for="angLimit">forgási sebesség</label>
+          <div class="range-wrap">
+            <input type="range" id="angLimit" min="0.1" max="1.0" step="0.05" value="0.3">
+            <span class="warn-mark" id="angWarnMark" title="Ez fölött a térképezés szétcsúszhat"></span>
+          </div>
+          <span class="val" id="angLimitV" style="width:84px;">0.30 rad/s</span>
+        </div>
+        <div class="limit-note">Csak a webes forgatógombokra vonatkozik; a fizikai távirányítót NEM korlátozza. Újratöltéskor visszaáll 0.30 rad/s-ra.</div>
+        <div class="limit-warn" id="angLimitWarn">⚠ A piros vonal fölött (0.60 rad/s) a LiDAR-szkennelés torzul, és a 2D térképezés szétcsúszhat. A határ becslés, nem mért érték.</div>
       </div>
 
       <div class="rot-row">
@@ -246,7 +270,13 @@ function log(cls, text) {
 // Ugyanazok az óvatos, NEM mért plafonok, mint a xavier_control/base_drive.py-ban —
 // ha ott változik a szám, itt is frissítsd, hogy a két oldal ne térjen el egymástól.
 const MAX_LINEAR_MPS = 0.15;
-const MAX_ANGULAR_RADPS = 0.3;
+const MAX_ANGULAR_RADPS = 0.3;          // alapérték; a csúszka ezt csak a webes forgatógombokra írja felül
+const ANGULAR_SLIDER_MIN = 0.1;
+const ANGULAR_SLIDER_MAX = 1.0;
+// Becsült határ, NEM mért érték: 12 Hz-es LiDAR-nál 0.6 rad/s ~ 0.05 rad/szkennelés. A 2026-09-21-i mérésnél
+// 0.5 rad/szkennelés (kb. 6 rad/s) fölötti fordulásnál omlottak össze a gmapping részecskéi (docs/11).
+const ANGULAR_MAP_WARN_RADPS = 0.6;
+let angularLimit = MAX_ANGULAR_RADPS;
 const MAX_LINEAR_ACCEL_PER_TICK = 0.03;
 const MAX_ANGULAR_ACCEL_PER_TICK = 0.06;
 const TICK_MS = 100; // 10 Hz — jóval ritkább, mint egy valós joystick-loop, de elég egy manuális UI-hoz
@@ -291,7 +321,7 @@ document.getElementById('armBtn').addEventListener('click', () => {
 function updateReadout() {
   document.getElementById('baseReadout').innerHTML =
     `linear.x: <b>${current.x.toFixed(3)}</b> m/s · linear.y: <b>${current.y.toFixed(3)}</b> m/s · angular.z: <b>${current.az.toFixed(3)}</b> rad/s<br>` +
-    `sebességplafon (NEM mért hardver-érték, óvatos alapbeállítás): ±0.15 m/s lineáris, ±0.30 rad/s szögsebesség`;
+    `sebességplafon (NEM mért hardver-érték, óvatos alapbeállítás): ±${MAX_LINEAR_MPS.toFixed(2)} m/s lineáris, ±${angularLimit.toFixed(2)} rad/s szögsebesség (forgás, csúszkával)`;
 }
 
 function publishTwist() {
@@ -330,7 +360,7 @@ function recomputeTarget() {
   target = {
     x: clamp(x, 1) * MAX_LINEAR_MPS,
     y: clamp(y, 1) * MAX_LINEAR_MPS,
-    az: clamp(az, 1) * MAX_ANGULAR_RADPS,
+    az: clamp(az, 1) * angularLimit,
   };
 }
 
@@ -365,6 +395,31 @@ document.getElementById('estopBtn').addEventListener('click', () => {
   setArmed(false);
   log('mock', "Webes megállítás — a fizikai vészleállítót nem helyettesíti");
 });
+
+// ---------- forgási sebesség csúszka (csak a webes gombokra) ----------
+(function wireAngularLimit() {
+  const slider = document.getElementById('angLimit');
+  const label = document.getElementById('angLimitV');
+  const box = document.getElementById('angLimitBox');
+  const mark = document.getElementById('angWarnMark');
+  const frac = (ANGULAR_MAP_WARN_RADPS - ANGULAR_SLIDER_MIN) / (ANGULAR_SLIDER_MAX - ANGULAR_SLIDER_MIN);
+  mark.style.left = `calc(8px + (100% - 16px) * ${frac.toFixed(4)} - 1px)`;
+  let wasOver = false;
+  function apply() {
+    const v = parseFloat(slider.value);
+    angularLimit = Math.max(ANGULAR_SLIDER_MIN, Math.min(ANGULAR_SLIDER_MAX, isFinite(v) ? v : MAX_ANGULAR_RADPS));
+    label.textContent = angularLimit.toFixed(2) + " rad/s";
+    const over = angularLimit > ANGULAR_MAP_WARN_RADPS + 1e-9;
+    box.classList.toggle('over', over);
+    if (over && !wasOver) log('mock', `Figyelem: ${angularLimit.toFixed(2)} rad/s forgás a térképezés szétcsúszását okozhatja`);
+    wasOver = over;
+    current.az = clamp(current.az, angularLimit);   // csökkentéskor azonnal érvényesül
+    recomputeTarget();
+    updateReadout();
+  }
+  slider.addEventListener('input', apply);
+  apply();
+})();
 
 // billentyűzet is működjön (WASD + QE forgatáshoz, ha nem akarod egérrel tartani)
 const KEYMAP = { w:'w', a:'a', s:'s', d:'d', q:'q', e:'e', z:'z', c:'c', ArrowLeft:'rotLeft', ArrowRight:'rotRight' };

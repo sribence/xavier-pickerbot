@@ -1,0 +1,7 @@
+# A scripts/robot-slam-diag.ps1 kimenete (robotnaplók, nem verziózandó)
+slam-diagnosztika.txt
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
