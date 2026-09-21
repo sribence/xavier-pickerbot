@@ -1,0 +1,34 @@
+<!--
+  KÍSÉRLETI paraméterkészlet a gyors fordulásoknál szétcsúszó /map javítására.
+  A gmapping.launch-ot NEM írja felül; a robot jelenlegi konténere továbbra is azt használja.
+  Az értékek kiindulópontok, roboton még nem próbáltuk ki. Kipróbálás előtt lásd docker/slam/README.md,
+  és ugyanazzal a felügyelt útvonallal hasonlítsd össze az eredetivel.
+-->
+<launch>
+  <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+    <param name="base_frame" value="base_footprint"/>
+    <param name="odom_frame" value="odom_combined"/>
+    <!-- Ritkább térképkiadás kevesebb CPU-t használ; a bemutatóoldal így is másodpercenként frissül. -->
+    <param name="map_update_interval" value="0.5"/>
+    <param name="maxUrange" value="11"/>
+    <param name="maxRange" value="12"/>
+    <param name="linearUpdate" value="0.05"/>
+    <param name="angularUpdate" value="0.05"/>
+    <param name="temporalUpdate" value="1"/>
+    <!-- 8 helyett 20 részecske: több hipotézis a gyors fordulásnál, de ~2,5x CPU-igény (a mostani mért terhelés kb. 32% egy magon 8 részecskénél). -->
+    <param name="particles" value="20"/>
+    <!-- Kerékodometria csúszásnál megbízhatatlan (mecanum): nagyobb forgási zaj, hogy a lézeres illesztés többet számítson. -->
+    <param name="srr" value="0.1"/>
+    <param name="srt" value="0.3"/>
+    <param name="str" value="0.1"/>
+    <param name="stt" value="0.4"/>
+    <!-- Gyenge illesztés elutasítása; a gmapping alapértéke 0 (mindent elfogad). -->
+    <param name="minimumScore" value="50"/>
+    <param name="xmin" value="-10.0"/>
+    <param name="ymin" value="-10.0"/>
+    <param name="xmax" value="10.0"/>
+    <param name="ymax" value="10.0"/>
+    <param name="delta" value="0.05"/>
+    <remap from="scan" to="/scan"/>
+  </node>
+</launch>

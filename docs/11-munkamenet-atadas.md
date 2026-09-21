@@ -79,3 +79,41 @@ A felhasználó kihúzta a TP-Link USB Wi-Fi sticket. A roboton a `wlan1` eltűn
 - Új `scripts/watch-demo-view.ps1`: 10 másodpercenként egy JPEG-pillanatképet kér az alagúton át, két sikertelen kör után lefuttatja a `start-demo-view.ps1 -NoBrowser` parancsot. Naplót ír a `%TEMP%\pickerbot-demo-watch.csv` fájlba (idő, siker, válaszidő másodpercben, méret bájtban, újraindítás). **Szintaxisát és működését még nem futtattuk le**, itt nincs PowerShell.
 
 **Következő lépések:** futtasd a `watch-demo-view.ps1`-et kábel nélkül, és a napló megmutatja a kiesések gyakoriságát és a válaszidőt. Olvasó mérések a roboton (`iw dev wlan0 link`, `iw dev wlan0 get power_save`) és laptopról `ping -n 60 192.168.123.50`. Ezek után dönthető el, hogy a kamera forrását kisebb felbontásra/kevesebb képkockára kell-e állítani (`pickerbot-c70` konténer újra létrehozása, robotoldali változtatás, külön jóváhagyással).
+
+### Alagút-őrző mérése kábel nélkül, 2026-09-21 13:43–13:48
+
+**Mérve** (`scripts/watch-demo-view.ps1`, 10 másodperces JPEG-pillanatkép az alagúton át, kb. 5 perc): 30 kérésből 30 sikerült, automatikus újraindítás nem történt. A válaszidő mediánja 0,17 s, két kiugró érték 3,62 s és 2,88 s volt (13:44:38 és 13:44:51), a többi 0,07–0,69 s. A kép mérete 12–23 kB. A felhasználó szerint a kamera ezúttal gyors volt, és nem szakadt meg. A pillanatkép egyetlen kép lekérése, ezért **nem** a folyamatos MJPEG-videó késését méri.
+
+**Bizonytalan:** az előző kör 1–2 percenkénti megszakadásai ebben a mérésben nem ismétlődtek meg; az okuk (helyváltoztatás, Wi-Fi-jel, roaming, az akkori terhelés) nincs kiderítve. A két kb. 3 másodperces megakadás a Wi-Fi rövid kiesésére utalhat, ez sincs bizonyítva. A mérés egy szobában, egyetlen 5 perces futásból származik.
+
+**Térkép:** az 5 perces körözés alatt a `/map` egy idő után szétcsúszott (egymásra fordult, elcsúszott falak). A körülmények, főleg hogy a robotot kézzel vitték-e (ilyenkor a kerékodometria nem mozdul), vagy hajtották, nincsenek rögzítve. Ez a korábbi, nyitott SLAM/TF-kérdés része; a szétcsúszás oka nem bizonyított.
+
+### Térkép-elcsúszás vizsgálata és robotoldali mérés, 2026-09-21 14:10–14:20
+
+A felhasználó joystickkel vitte a robotot (a joystick közvetlenül az alsó vezérlőhöz kapcsolódik, a webes sebességplafon nem érvényes rá), és gyors fordulások közben a `/map` szétcsúszott (egymásra fordult, elcsúszott falak). A `scripts/robot-slam-diag.ps1` csak olvasó módon mért a roboton, álló helyzetben.
+
+**Mért:**
+- `/scan` 12,0 Hz (szórás 0,0002 s), `/odom` 20,0 Hz, `/imu` 20,0 Hz, `/tf` kb. 100 Hz. A gmapping bemenetei nem estek ki.
+- `/map` 10 másodperces mérésben 0,44–1,6 Hz, legfeljebb 3,1 másodperces szünetekkel. A `temporalUpdate` értéke 1 s, így álló robotnál ez várható; a mérés idején mozgás nem volt.
+- `wlan0`: −28 dBm, 270–300 Mbit/s, **Power save be van kapcsolva**. A hatása nincs mérve, a beállítást nem módosítottuk.
+- SLAM-napló (utolsó ~150 sor, álló robotnál): az átlagos illesztési pontszám kb. 1430–1460, `neff` 6,5 körül (8 részecskéből), a pozíció gyakorlatilag nem mozdul (`ad` ~1e-9). Az álló állapot tehát stabil. A CPU-terhelés (`docker stats`) sora nem került elő.
+
+**Nem mért / bizonytalan:** a szétcsúszás mozgás közben történt, de mozgás közbeni SLAM-napló és CPU-terhelés nincs. Nem tudjuk, hogy a gmapping fordulás közben lemarad-e (8 részecske, 12 Hz-es scanek), vagy a kerékodometria csúszása okozza-e (mecanum). A `docker/slam/gmapping-tuned.launch` (20 részecske, nagyobb forgási zaj, minimumScore 50) egy **kipróbálatlan** ötlet, még nincs telepítve; a robot konténere a régi `gmapping.launch`-ot használja.
+
+**Következő lépés:** mozgás közbeni mérés. Új térképpel indítva (a `pickerbot-slam` újraindítása törli a térképet), felügyelt, lassú, majd gyorsabb joystickos fordulás közben és közvetlenül utána: `sudo docker stats --no-stream pickerbot-slam` és a naplóban a „Dropped”/„Failed” sorok, valamint az `Average Scan Matching Score` legalacsonyabb értékei. Utána döntsük el, kell-e a tuned fájl.
+
+### SLAM mozgás közben, 2026-09-21 14:27
+
+Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó joystickkel vezette a robotot, gyors fordulásokkal; a térkép enyhén szétcsúszott. A `robot-slam-diag.ps1` a mozgás után futott.
+
+**Mérve (SLAM-napló és `docker stats`):**
+- A konténer CPU-terhelése 6,5%, memóriája 43,6 MiB. A gmapping **nem processzorkorlátos**, és a naplóban a mozgás közben minden feldolgozott scan után volt frissítés (nincs kihagyott „update frame” sorozat a mozgás alatt).
+- A gyors forduláskor az odometria egy lépésben (`ad`) 0,47–0,87, majd 2,13 és 1,22 rad elfordulást jelentett két egymás utáni scan között (kb. 83 ms). Ekkor az illesztési pontszám 1490-ről 1110, 864 és 919 értékre esett, a hasznos részecskék száma (`neff`) 1-re, és többszöri újramintavételezés történt („RESAMPLE”). Utána `neff` 7-re állt vissza, a térkép azonban már a hibás pozícióval épült tovább.
+- A `/scan` 12,0 Hz, `/odom` 20,0 Hz, `/imu` 20,0 Hz (az IMU időzítése ekkor szabálytalan volt: 0,025–0,075 s között ingadozott, a korábbi mérésnél egyenletes volt), `/tf` kb. 100 Hz.
+- Wi-Fi: −28 dBm, 243–300 Mbit/s, **Power save be**, csatorna 2452 MHz (2,4 GHz, 40 MHz széles). A `TX` bájtszámláló a 14:14 és 14:27 közötti kb. 13 percben 1,47 GB-tal nőtt, ez kb. 15 Mbit/s tartós feltöltés a robot felől (a 14:10-es és 14:14-es érték között a számláló valószínűleg 32 bites túlcsordulással nullázódott; ezt nem ellenőriztük).
+
+**Következtetés (nem bizonyított, de a mérésekkel egyezik):** a szétcsúszást nem a CPU, nem a scan/odom kiesése és nem a Wi-Fi okozta, hanem a gyors fordulás: néhány scan alatt több radiánnyi odometria-ugrás, és a scan is torzul, mert a LiDAR 83 ms alatt körbeér, miközben a robot közben elfordul. A részecskék összeomlanak (`neff` 1), a 8 részecske és a `gmapping-tuned.launch` (20 részecske) ezt valószínűleg **nem** oldja meg; a fordulási sebesség korlátozása többet segít. A robot valós maximális szögsebessége és a joystick sebességfokozata nincs feltárva.
+
+**Kamerakésés:** a felhasználó szerint a kép a mérés idején késni kezdett. A késés nincs számszerűen mérve. A ~15 Mbit/s tartós feltöltés a 640×480-as MJPEG-folyamból adódhat; a kisebb felbontású/kevesebb képkockás forrás a forgalmat csökkentené, de ezt még nem próbáltuk ki.
+
+**Következő lépések:** (1) a joystick/távirányító sebességfokozatának vagy szögsebesség-korlátjának felkutatása, és térképezéskor lassú fordulás (kb. 0,1 rad/scan alatt, azaz 1 rad/s alatt); (2) az IMU szabálytalan időzítésének vizsgálata; (3) kamera: kisebb felbontás/képkockaszám a forrásnál (robotoldali változtatás, külön jóváhagyással).

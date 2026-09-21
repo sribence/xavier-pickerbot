@@ -12,3 +12,7 @@ sudo docker run -d --restart unless-stopped --name pickerbot-slam --network host
 2026-09-19-én a konténer már létrejött; ne indíts másodikat. A sikeres próbán a `/map` témának volt publikálója, 384×384 cellás, 0,05 m felbontású térképet adott. Egy üzenet 4559 szabad és 412 foglalt cellát tartalmazott; nyolc másodperc alatt öt eltérő tartalmú üzenet érkezett álló robot mellett. Mozgás közbeni térképépítést és reboot utáni automatikus indulást még nem igazoltunk.
 
 Ellenőrzés: `rostopic info /map`, `rostopic echo -n 1 /map/info`, `sudo docker logs --tail 50 pickerbot-slam`. Leállítás és visszavonás: `sudo docker stop pickerbot-slam`, majd `sudo docker rm pickerbot-slam`.
+
+## Kísérleti paraméterek (nincs telepítve)
+
+A [gmapping-tuned.launch](gmapping-tuned.launch) a gyors fordulásoknál szétcsúszó `/map` javítására készült kipróbálatlan paraméterkészlet (20 részecske, nagyobb forgási zaj, `minimumScore`). A futó konténer továbbra is a [gmapping.launch](gmapping.launch) értékeit használja. Kipróbálás előtt mérd meg a mozgás közbeni CPU-terhelést és a naplót (lásd `docs/11-munkamenet-atadas.md`). A konténer újralétrehozása törli a jelenlegi térképet.
