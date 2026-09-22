@@ -72,6 +72,8 @@
   .arm-toggle .state.armed-label { color:var(--bad); font-weight:700; }
 
   .dpad { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:6px; justify-content:center; margin:1rem 0; }
+  .dpad.dpad-cross button { font-size:0.72rem; }
+  .dpad-empty { visibility:hidden; }
   .dpad button {
     font-family:inherit; font-size:1.1rem; border-radius:8px; border:1px solid var(--border);
     background:var(--surface); color:var(--text); cursor:pointer; user-select:none; touch-action:none;
@@ -180,16 +182,19 @@
         <button id="rotLeft" title="forgás balra (angular.z +)">⟲ balra</button>
         <button id="rotRight" title="forgás jobbra (angular.z -)">⟳ jobbra</button>
       </div>
-      <div class="dpad">
-        <button id="q" title="átló balra-előre">↖</button>
-        <button id="w" title="előre">↑</button>
-        <button id="e" title="átló jobbra-előre">↗</button>
-        <button id="a" title="oldalra balra (mecanum strafe)">←</button>
+      <div class="dpad dpad-cross">
+        <span class="dpad-empty"></span>
+        <button id="w" title="előre">↑ előre</button>
+        <span class="dpad-empty"></span>
+        <button id="a" title="oldalra balra, fordulás nélkül (mecanum strafe)">← oldalra</button>
         <button id="stopMid" title="azonnali megállás">■</button>
-        <button id="d" title="oldalra jobbra (mecanum strafe)">→</button>
-        <button id="z" title="átló balra-hátra">↙</button>
-        <button id="s" title="hátra">↓</button>
-        <button id="c" title="átló jobbra-hátra">↘</button>
+        <button id="d" title="oldalra jobbra, fordulás nélkül (mecanum strafe)">oldalra →</button>
+        <span class="dpad-empty"></span>
+        <button id="s" title="hátra">↓ hátra</button>
+        <span class="dpad-empty"></span>
+      </div>
+      <div class="limit-note" style="margin-top:-0.6rem; margin-bottom:0.6rem;">
+        Az oldalazás (A/D) még nincs élő roboton kipróbálva. Átlós mozgás egyelőre nincs a felületen — a kontrolleren sem elérhető, ezt később tárgyaljuk.
       </div>
       <button class="stop-btn" id="estopBtn">WEBES MEGÁLLÍTÁS — LEÉLESÍTÉS</button>
 
@@ -373,12 +378,11 @@ function publishTwist() {
   }
 }
 
-// gomb -> kért irány (billentyűzet-szerű dpad, nem valódi analóg joystick)
+// gomb -> kért irány. Előre/hátra és tiszta oldalazás (mecanum strafe, fordulás nélkül) van;
+// a fizikai kontrolleren nincs átlós mozgás, ezért a webes felület se kínáljon olyat.
 const DIRS = {
   w: { x: 1, y: 0, az: 0 }, s: { x: -1, y: 0, az: 0 },
   a: { x: 0, y: 1, az: 0 }, d: { x: 0, y: -1, az: 0 },
-  q: { x: 1, y: 1, az: 0 }, e: { x: 1, y: -1, az: 0 },
-  z: { x: -1, y: 1, az: 0 }, c: { x: -1, y: -1, az: 0 },
 };
 const pressed = new Set();
 
@@ -410,7 +414,7 @@ function wireHold(id, key) {
   el.addEventListener('pointercancel', up);
   el.addEventListener('pointerleave', up);
 }
-['q','w','e','a','d','z','s','c'].forEach(k => wireHold(k, k));
+['w', 's', 'a', 'd'].forEach(k => wireHold(k, k));
 wireHold('rotLeft', 'rotLeft');
 wireHold('rotRight', 'rotRight');
 
@@ -453,22 +457,52 @@ document.getElementById('estopBtn').addEventListener('click', () => {
   apply();
 })();
 
-// billentyűzet is működjön (WASD + QE forgatáshoz, ha nem akarod egérrel tartani)
-const KEYMAP = { w:'w', a:'a', s:'s', d:'d', q:'q', e:'e', z:'z', c:'c', ArrowLeft:'rotLeft', ArrowRight:'rotRight' };
+// billentyűzet is működjön: W/S előre-hátra, A/D oldalazás (fordulás nélkül), Q/E forgatás
+// (tengelye körül, a helyén), a nyilak is jók forgatáshoz.
+// Q/W/E/A/S/D ugyanazon a fizikai helyen van magyar (QWERTZ) és amerikai (QWERTY) kiosztáson is,
+// tehát magyar billentyűzeten is ugyanoda kell nyúlni.
+const KEYMAP = { w:'w', s:'s', a:'a', d:'d', q:'rotLeft', e:'rotRight', ArrowLeft:'rotLeft', ArrowRight:'rotRight' };
+// Biztonsági védőháló (2026-09-22-i eset után): ha a böngésző/OS elveszít egy keyup eseményt,
+// a billentyű örökre "lenyomva" maradna, és a robot nem áll meg (ez tényleg megtörtént — a robot
+// asztalnak ütközött, mert a W billentyű elengedésére nem reagált semmi). Amíg egy billentyűt
+// ténylegesen nyomva tartasz, az OS ismétlődő keydown-eseményeket küld rá (billentyű-ismétlés);
+// ha egy adott billentyűre KEY_ALIVE_MS ideig nem jön újabb keydown (se első, se ismétlődő),
+// a felület automatikusan elengedettnek veszi, keyup nélkül is.
+const KEY_ALIVE_MS = 700;
+const keyLastSeen = new Map();
 window.addEventListener('keydown', (e) => {
   const key = KEYMAP[e.key] || KEYMAP[e.key.toLowerCase()];
   if (!key) return;
   if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
   e.preventDefault();
+  keyLastSeen.set(key, Date.now());
   if (e.repeat) return;
   pressed.add(key); recomputeTarget(); lastActivity = Date.now();
+  const el = document.getElementById(key);
+  if (el) el.classList.add('pressed');
   if (!armed) log('mock', `MOCK — ${key} (a bázis nincs élesítve)`);
 });
 window.addEventListener('keyup', (e) => {
   const key = KEYMAP[e.key] || KEYMAP[e.key.toLowerCase()];
   if (!key) return;
+  keyLastSeen.delete(key);
   pressed.delete(key); recomputeTarget();
+  const el = document.getElementById(key);
+  if (el) el.classList.remove('pressed');
 });
+function releaseStaleKeys() {
+  const now = Date.now();
+  for (const [key, seen] of keyLastSeen) {
+    if (pressed.has(key) && now - seen > KEY_ALIVE_MS) {
+      pressed.delete(key);
+      keyLastSeen.delete(key);
+      const el = document.getElementById(key);
+      if (el) el.classList.remove('pressed');
+      log('mock', `${key} — nem érkezett billentyű-visszajelzés (elveszett keyup?), automatikusan elengedve`);
+      recomputeTarget();
+    }
+  }
+}
 window.addEventListener('pointerup', () => {
   pressed.clear(); recomputeTarget();
   document.querySelectorAll('.pressed').forEach(el => el.classList.remove('pressed'));
@@ -478,6 +512,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && arm
 
 // rate-limitelt tick — ugyanaz a logika, mint xavier_control/base_drive.py TeleopRateLimiter-je
 setInterval(() => {
+  releaseStaleKeys();
   const dtScale = TICK_MS / 100; // referencia: 100ms/tick
   current.x += clamp(target.x - current.x, MAX_LINEAR_ACCEL_PER_TICK * dtScale);
   current.y += clamp(target.y - current.y, MAX_LINEAR_ACCEL_PER_TICK * dtScale);

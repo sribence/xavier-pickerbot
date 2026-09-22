@@ -1,5 +1,25 @@
 # Xavier Pickerbot Mini
 
+## Gyorsindítás (bemutatóoldal)
+
+Nyiss egy PowerShell-ablakot, és másold be ezt:
+
+```powershell
+cd C:\Users\david\Github\xavier-pickerbot
+powershell -ExecutionPolicy Bypass -File .\scripts\start-demo-view.ps1
+```
+
+Ez megnyitja az oldalt: `http://127.0.0.1:8902/scripts/control_panel.html`
+
+Leállításhoz:
+
+```powershell
+cd C:\Users\david\Github\xavier-pickerbot
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo-view.ps1
+```
+
+Egyéb kapcsolók: `-NoBrowser` (nem nyit böngészőablakot), `-DashboardOnly` (a teljes műszaki szenzornézetet nyitja meg a bázisvezérlős oldal helyett).
+
 **2026-09-19 karfigyelmeztetés:** a fizikai joystickkel a talp fölötti fel-le ízület végállásnál daráló hangot és sípolást ad, utána rendellenesen mozog. A karon további mozgáspróbát ne végezz, amíg áramtalanítva át nem vizsgálták. A webes karvezérlés továbbra is szimuláció. A mérések és a gyári leállítási parancs kockázata: [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md).
 
 **Wheeltec gyártmányú, "Xavier Pickerbot Mini" néven értékesített oktatási robot** — mecanum kerekes alváz + 4 tengelyű robotkar, NVIDIA Jetson Xavier NX fedélzeti számítógéppel, LiDAR-ral és Orbbec Astra RGBD mélységkamerával.
