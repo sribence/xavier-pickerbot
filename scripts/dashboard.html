@@ -176,15 +176,32 @@ const ROSBRIDGE_PORT = 9090;
 if (!EMBEDDED) document.getElementById('rgbImg').src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
 const c70Img = document.getElementById('c70Img');
 // A teljes 640×480/95% MJPEG túl sok adatot torlasztott a kapcsolatban.
-// A helyi szerver (demo_server.py) egyetlen robot-oldali folyamot oszt meg az összes nyitott fül között.
-const c70StreamUrl = `/cam/c70.mjpg?relay=1`;
+const c70StreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/usb_cam/image_raw&width=320&height=240&quality=55`;
 
 // ---------- rosbridge connection ----------
-const ros = new ROSLIB.Ros({ url: `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}` });
+const ROS_URL = `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}`;
+const ros = new ROSLIB.Ros({ url: ROS_URL });
 const statusEl = document.getElementById('globalStatus');
-ros.on('connection', () => { statusEl.textContent = "rosbridge: csatlakozva"; statusEl.className = "ok"; });
-ros.on('error', (e) => { statusEl.textContent = "rosbridge hiba"; statusEl.className = "err"; });
-ros.on('close', () => { statusEl.textContent = "rosbridge: lezárva"; statusEl.className = "err"; });
+// A rosbridge-kapcsolat korábban NEM próbált újracsatlakozni magától — ha megszakadt
+// (pl. a fül sokáig háttérben volt), csak egy teljes oldalújratöltés hozta vissza, ami
+// a kamera-figyelőn (checkC70Connection) keresztül, közvetve, sokára történt meg.
+// Most a lezárás/hiba után saját maga próbál újracsatlakozni.
+let rosReconnectTimer = null;
+function scheduleRosReconnect() {
+  if (rosReconnectTimer) return;
+  rosReconnectTimer = setTimeout(() => {
+    rosReconnectTimer = null;
+    if (!ros.isConnected) { try { ros.connect(ROS_URL); } catch (e) { /* soron következő próba */ } }
+  }, 3000);
+}
+ros.on('connection', () => {
+  statusEl.textContent = "rosbridge: csatlakozva"; statusEl.className = "ok";
+  // Újracsatlakozáskor a korábbi feliratkozások elveszhetnek — friss feliratkozás a térképre.
+  mapTopic.unsubscribe();
+  mapTopic.subscribe(drawMap);
+});
+ros.on('error', () => { statusEl.textContent = "rosbridge hiba — újracsatlakozás..."; statusEl.className = "err"; scheduleRosReconnect(); });
+ros.on('close', () => { statusEl.textContent = "rosbridge: lezárva — újracsatlakozás..."; statusEl.className = "err"; scheduleRosReconnect(); });
 
 // A SLAM által előállított foglaltsági rács; a /scan önmagában nem térkép.
 const mapTopic = new ROSLIB.Topic({
@@ -249,7 +266,8 @@ function drawMap(msg) {
   const state = changed ? 'Térkép: tartalom változott' : mapUpdates > 1 ? 'Térkép: üzenetek érkeznek, tartalom változatlan' : 'Térkép: fogadva, frissítésre vár';
   mapStatus.textContent = `${state} · ${w}×${h} · ${msg.info.resolution.toFixed(3)} m/cella · ${frame}`;
 }
-mapTopic.subscribe(drawMap);
+// A feliratkozás a fenti ros.on('connection', ...) kezelőben történik (első csatlakozáskor és
+// minden újracsatlakozáskor is), hogy újracsatlakozás után se maradjunk feliratkozás nélkül.
 resetMapBtn.addEventListener('click', async () => {
   if (!window.confirm('Töröljük az eddig épített térképet, és kezdjük újra?')) return;
   mapResetting = true;
@@ -402,6 +420,33 @@ setInterval(() => {
   }
   if (!EMBEDDED && c70FallbackStarted) c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
 }, 8000);
+
+// Háttérbe kerülő fülnél (2026-09-22-i felhasználói visszajelzés: sokára és nagy késéssel jött
+// vissza a kamera és a térkép is) két dolog történhet: (1) a böngésző háttérben lelassítja a
+// fül renderelését, a lassan "olvasott" MJPEG-folyam mögött az OS pufferei régi képkockákat
+// halmoznak fel — ezért a visszatéréskor a régi, lemaradt képek játszódnak le, mire beér az élő
+// kép (ez már korábban is ismert korlát volt, most igazolódott éles roboton); (2) a rosbridge
+// websocket megszakadhat, és korábban semmi nem próbálta újra felépíteni, csak egy közvetett,
+// lassú (8-15 másodperces lépésekből álló) oldalújratöltés-lánc hozta vissza. Most: háttérbe
+// kerüléskor szándékosan lezárjuk a kamera-kapcsolatot (nem pufferelődik tovább), előtérbe
+// kerüléskor pedig azonnal friss (cache nélküli) kapcsolatot nyitunk, és ellenőrizzük a
+// rosbridge-et is ahelyett, hogy a lassú, időzített ellenőrzésekre várnánk.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    c70Img.removeAttribute('src');
+    return;
+  }
+  c70MjpegStarted = false;
+  c70FallbackStarted = false;
+  c70Img.hidden = false;
+  c70Canvas.hidden = true;
+  c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
+  setTimeout(() => {
+    if (document.hidden) return;
+    if (!c70MjpegStarted && !c70Img.naturalWidth) startC70Fallback();
+  }, 5000);
+  if (!ros.isConnected) { try { ros.connect(ROS_URL); } catch (e) { /* soron következő próba */ } }
+});
 
 // A beágyazott nézet csak a C70-et és a /map-et kéri le. A többi szenzor
 // feliratkozása és a 3D renderelés a teljes dashboardon fut.

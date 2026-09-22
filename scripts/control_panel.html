@@ -303,7 +303,9 @@ let angularLimit = MAX_ANGULAR_RADPS;
 const MAX_LINEAR_ACCEL_PER_TICK = 0.03;
 const MAX_ANGULAR_ACCEL_PER_TICK = 0.06;
 const TICK_MS = 100; // 10 Hz — jóval ritkább, mint egy valós joystick-loop, de elég egy manuális UI-hoz
-const ARM_TIMEOUT_MS = 20000; // 20s inaktivitás után automatikus leélesítés
+// Az inaktivitás-alapú automatikus leélesítést felhasználói kérésre kivettük (2026-09-22) —
+// ez a konstans jelenleg nincs használva, csak dokumentációként maradt itt.
+const ARM_TIMEOUT_MS = 20000;
 
 let armed = false;
 let lastActivity = Date.now();
@@ -507,8 +509,20 @@ window.addEventListener('pointerup', () => {
   pressed.clear(); recomputeTarget();
   document.querySelectorAll('.pressed').forEach(el => el.classList.remove('pressed'));
 });
-window.addEventListener('blur', () => { if (armed) setArmed(false, 'az ablak elvesztette a fókuszt'); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && armed) setArmed(false, 'az oldal háttérbe került'); });
+// Fókuszvesztéskor csak akkor kell teljes leélesítés (újra-megerősítést igénylő biztonsági leállás),
+// ha épp ténylegesen ment a robot (pressed nem üres) — ilyenkor a keyup elveszhet (ld. a mai eset:
+// a W billentyű elengedése nem érkezett meg). Ha semmi nem volt nyomva, elég nullázni és élesítve hagyni,
+// hogy egy egyszerű ablakváltás (pl. az SSH-terminálra kattintás) ne kényszerítsen újra-élesítést.
+window.addEventListener('blur', () => {
+  if (!armed) return;
+  if (pressed.size > 0) setArmed(false, 'az ablak elvesztette a fókuszt vezérlés közben (biztonsági leállás)');
+  else hardStop();
+});
+document.addEventListener('visibilitychange', () => {
+  if (!armed || !document.hidden) return;
+  if (pressed.size > 0) setArmed(false, 'az oldal háttérbe került vezérlés közben (biztonsági leállás)');
+  else hardStop();
+});
 
 // rate-limitelt tick — ugyanaz a logika, mint xavier_control/base_drive.py TeleopRateLimiter-je
 setInterval(() => {
@@ -519,11 +533,10 @@ setInterval(() => {
   current.az += clamp(target.az - current.az, MAX_ANGULAR_ACCEL_PER_TICK * dtScale);
   updateReadout();
 
-  // auto-leélesítés inaktivitás után, ugyanaz a minta, mint a Go2 dashboard _watchdog-ja
-  if (armed && Date.now() - lastActivity > ARM_TIMEOUT_MS && pressed.size === 0) {
-    log('mock', `${ARM_TIMEOUT_MS / 1000}s inaktivitás — automatikus leélesítés`);
-    setArmed(false, 'inaktivitás');
-  }
+  // Felhasználói kérésre (2026-09-22) az inaktivitás-alapú automatikus leélesítés ki lett véve:
+  // most már csak akkor élesítődik le, ha ténylegesen vezérlés közben szakad meg valami
+  // (fókuszvesztés nyomott gombbal), a webes megállítás gombbal, vagy kézzel. Az ARM_TIMEOUT_MS
+  // értéket ezért itt nem használjuk; a fizikai leállító és a webes megállítás marad az utolsó védelem.
 
   // Élesítve a nulla parancsot is periodikusan küldjük. A webes megállítás
   // továbbra is hálózatfüggő, ezért nem tekinthető fizikai vészleállítónak.
