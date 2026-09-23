@@ -1,0 +1,16 @@
+[Unit]
+Description=Pickerbot sensor startup ordering and health check
+Requires=docker.service pickerbot-bringup.service pickerbot-camera.service
+After=docker.service pickerbot-bringup.service pickerbot-camera.service
+PartOf=pickerbot-bringup.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=HOME=/root
+Environment=ROS_MASTER_URI=http://127.0.0.1:11311
+TimeoutStartSec=180
+ExecStart=/usr/local/sbin/pickerbot-sensors-recover
+
+[Install]
+WantedBy=multi-user.target

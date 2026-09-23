@@ -14,6 +14,7 @@ exec rosrun usb_cam usb_cam_node \
   _video_device:=/dev/RgbCam \
   _image_width:=640 \
   _image_height:=480 \
-  _pixel_format:=yuyv \
+  _framerate:=30 \
+  _pixel_format:=mjpeg \
   _camera_frame_id:=c70_cam \
   _io_method:=mmap

@@ -39,7 +39,7 @@ trap restore_on_error EXIT
 docker run -d --restart unless-stopped --name pickerbot-c70 --network host \
   --device "$device:/dev/RgbCam" \
   -e ROS_MASTER_URI=http://192.168.123.50:11311 -e ROS_IP=192.168.123.50 \
-  pickerbot/c70:noetic-20260919 >/dev/null
+  pickerbot/c70:noetic-20260923-mjpeg >/dev/null
 
 set +u
 source /opt/ros/noetic/setup.bash

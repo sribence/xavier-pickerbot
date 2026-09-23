@@ -80,7 +80,9 @@ try {
                 $plink = Get-Command 'plink.exe' -ErrorAction SilentlyContinue
                 if (-not $plink) { throw 'Az SSH-kulcs nem olvasható, és a PuTTY plink.exe sem érhető el.' }
                 $readme = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw
-                $passwordMatch = [regex]::Match($readme, '\| Sudo jelszó \| `([^`]+)`')
+                # Windows PowerShell 5.1 BOM nélküli UTF-8 README-t a rendszer kódlapjával olvashat.
+                # Az ékezetes mezőnév helyett a stabil "Sudo" oszlopkezdetre illesztünk.
+                $passwordMatch = [regex]::Match($readme, '\|\s*Sudo\s+[^|]*\|\s*`([^`]+)`')
                 if (-not $passwordMatch.Success) { throw 'A dokumentált robotjelszó nem található.' }
                 $hostKeyLine = & ssh-keygen.exe -lf $knownHosts |
                     Where-Object { $_ -match '192\.168\.123\.50' } | Select-Object -First 1

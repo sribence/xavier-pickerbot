@@ -85,6 +85,8 @@ Mindhárom `enable`-ölve van, `Restart=on-failure`-ral — összeomlás után m
 
 **Ugyanazon a napon, későbbi frissítés:** a LiDAR és a gmapping is külön Docker-konténerből fut. A `/scan` kb. 12 Hz-cel érkezik, a `/map` élő, 5 cm-es foglaltsági rácsot publikál. A négy új konténer és a három korábbi systemd-szolgáltatás együttesen fut; fizikai mozgáspróba és rebootpróba ezekkel a konténerekkel még hátravan. A helyi dashboardon a C70 képe és a valódi `/map` panel egyszerre érhető el; részletek: [docs/10-bemutato-terkep.md](docs/10-bemutato-terkep.md).
 
+**2026-09-23, szenzorindítási hiba megoldva és tiszta reboot után igazolva:** rebootkor a C70, a LiDAR és a SLAM Docker-konténere korábban a valódi ROS master előtt indult, ezért futó folyamat mellett sem regisztrált a `/usb_cam/image_raw`, `/scan` és `/map`. A kamera systemd-egysége szintén túl korán indulhatott. Emellett az Astra és a C70 ugyanazon az USB 2.0 buszon van; a C70 tömörítetlen YUYV módja mellett az Astra színes képe nem adott képkockát. Telepítve lett a ROS masterre váró kameraegység, a sorrendi `pickerbot-sensors-recover` egység és a C70 MJPEG beállítása. Tiszta robot-reboot után az `/odom`, mindkét Astra kép, a C70, a `/scan` és a `/map` is friss adatot adott; mind az öt systemd-szolgáltatás aktív. Részletek: [docs/12-szenzor-inditasi-sorrend.md](docs/12-szenzor-inditasi-sorrend.md).
+
 ## ⚠️ Mielőtt hozzányúlnál
 
 - **USB-C a Jetsonon adatport, nem tápbemenet.** Csak a barrel jack (19V) vagy a robot saját akkuja indítja el.
