@@ -59,9 +59,9 @@ def test_clamp_joints_leaves_safe_values_untouched():
 
 def test_clamp_gripper_caps_to_open_closed_range():
     safety = ArmSafety()
-    assert safety.clamp_gripper(5.0) == GRIPPER_OPEN
-    assert safety.clamp_gripper(-5.0) == GRIPPER_CLOSED
-    assert safety.clamp_gripper(0.5) == 0.5
+    assert safety.clamp_gripper(500.0) == GRIPPER_CLOSED
+    assert safety.clamp_gripper(-5.0) == GRIPPER_OPEN
+    assert safety.clamp_gripper(50.0) == 50.0
 
 
 def test_is_safe_true_for_zero_pose():
@@ -96,8 +96,8 @@ def test_mock_sender_records_gripper_open_close():
 
 def test_mock_sender_gripper_value_is_clamped():
     sender = MockArmSender()
-    command = sender.send_gripper(50.0)
-    assert command["value"] == GRIPPER_OPEN
+    command = sender.send_gripper(500.0)
+    assert command["value"] == GRIPPER_CLOSED
 
 
 def test_mock_sender_has_no_public_method_beyond_the_known_safe_set():

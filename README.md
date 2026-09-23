@@ -45,6 +45,8 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 - [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md) — **saját projekt #3**: kézi vezérlés (bázis-drive valós-képes ÉLESÍTÉS mögött, kar MOCK-ONLY); a `/cmd_vel` 2026-09-18-án élőben megerősítve
 - [docs/10-bemutato-terkep.md](docs/10-bemutato-terkep.md) — a C70 kamera + valódi `/map` bemutató állapota és ellenőrzési sorrendje
 - [docs/11-munkamenet-atadas.md](docs/11-munkamenet-atadas.md) — az aktuális állapot és a következő fejlesztőnek szóló átadás
+- [docs/12-szenzor-inditasi-sorrend.md](docs/12-szenzor-inditasi-sorrend.md) — reboot utáni kamera/LiDAR/SLAM indítási sorrend és helyreállítás
+- [docs/13-kar-es-gripper-vezerles.md](docs/13-kar-es-gripper-vezerles.md) — gyári parancsformátum, gripperskála, gombos modell és az élő bekapcsolás feltételei
 - [docs/09-robot-halozat.md](docs/09-robot-halozat.md) — **a közös robot-hálózat** (2026-09-18): gateway PC + TP-Link router, IP-kiosztás, elérés, hibaelhárítás
 - [scripts/](scripts/) — a ténylegesen használt kapcsolódó/indító szkriptek, másolható egy az egyben
 - [docker/sensors/](docker/sensors/) — a C70 kamera és a csak helyben elérhető videófolyam Docker-indítása
@@ -92,7 +94,7 @@ Mindhárom `enable`-ölve van, `Restart=on-failure`-ral — összeomlás után m
 - **USB-C a Jetsonon adatport, nem tápbemenet.** Csak a barrel jack (19V) vagy a robot saját akkuja indítja el.
 - **Az `/camera/toggle_ir` service hívása összeomlasztja a kameradrivert** és USB-szinten beragasztja az eszközt — lásd [docs/07-ismert-hibak.md](docs/07-ismert-hibak.md).
 - A gyári lemezen 5 alváz-kar kombináció csomagjai vannak egy image-ben; a mi példányunkhoz **csak a `mini_mec_four_arm*` csomagok relevánsak** — a többihez generált kód ne nyúljon, ne is hivatkozzon rájuk.
-- **2026-09-18 élő teszt: `/cmd_vel` és `/arm_cmd` megerősítve, szoftverlánc (soros port, STM32, IMU/odom 20Hz) egészséges.** Ha mégsem mozog a bázis — se webről, se fizikai joystickről —, az hardveres ok (E-stop gomb, külön motor-tápkapcsoló, alacsony akkufeszültség), nem szoftverhiba. Lásd [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md) diagnosztika szakaszát. A robotkar gripper-értékének (`arm_cmd` `data[3]`) numerikus konvenciója még nincs kalibrálva — a kar-vezérlés addig MOCK-only marad.
+- **2026-09-18 élő teszt: `/cmd_vel` és `/arm_cmd` megerősítve, szoftverlánc (soros port, STM32, IMU/odom 20Hz) egészséges.** Ha mégsem mozog a bázis — se webről, se fizikai joystickről —, az hardveres ok (E-stop gomb, külön motor-tápkapcsoló, alacsony akkufeszültség), nem szoftverhiba. Lásd [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md) diagnosztika szakaszát. **2026-09-23:** a gyári forrásból igazolt gripperskála `0 = nyitva`, `100 = zárva`; az élő karvezérlés továbbra is zárolt, mert nincs mért karpozíció, és a korábbi daráló/sípoló ízülethiba nincs fizikailag kivizsgálva. A webes abszolút csúszkák helyett korlátozott, kis lépéses gombos szimuláció készült.
 
 ## Licenc / szerzőség
 

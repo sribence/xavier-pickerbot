@@ -28,6 +28,7 @@
   }
   header h1 { font-size:0.85rem; margin:0; font-weight:600; }
   header a { color:var(--accent); font-size:0.72rem; text-decoration:none; }
+  header .view-switch { display:flex; align-items:center; gap:0.35rem; font-size:0.72rem; color:var(--muted); margin-left:auto; }
   #globalStatus { font-size:0.72rem; padding:0.15rem 0.5rem; border-radius:99px; border:1px solid var(--border); }
   #globalStatus.ok { color:var(--good); border-color:var(--good); }
   #globalStatus.err { color:var(--bad); border-color:var(--bad); }
@@ -149,6 +150,34 @@
   #bigHead[data-sensor="tileDepth"] #toggleDepthWrap { display:inline-flex; }
   #bigHead[data-sensor="tilePc3d"] #pc3dLegend { display:flex; }
 
+  /* ============ RÁCSNÉZET (2026-09-24, felhasználói kérés) =================
+     A fejlécben lévő kapcsolóval váltható: fókusznézetben (eddigi viselkedés) 1 kép van nagyban,
+     a többi kicsiben a bal sávban; rácsnézetben mind a 6 kép EGYENLŐ MÉRETBEN, táblázatos rácsban
+     látszik egyszerre — ugyanabban a konténerben (#bigBody), ahol eddig az 1 nagy kép volt. A
+     vezérlés (jobb oldalsáv) és a napló (bal alsó sarok, a bal sáv alján) helye emiatt NEM
+     változik, csak a képek elrendezése. */
+  /* rácsnézetben a kisképek sora teljesen eltűnik (nem csak visibility:hidden), a napló pedig
+     kitölti a fölötte felszabaduló helyet — felhasználói kérés, 2026-09-24. */
+  .stage.grid-mode .thumb-strip { display:none; }
+  .stage.grid-mode .log-wrap { flex:1 1 auto; }
+  .stage.grid-mode #bigHead { display:none; }
+  .stage.grid-mode .map-meta { display:none !important; }
+  .stage.grid-mode #bigBody {
+    display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(2, 1fr);
+    gap:2px; background:var(--border);
+  }
+  .stage.grid-mode #bigBody .big-sensor {
+    position:relative; inset:auto; min-width:0; min-height:0; cursor:pointer;
+  }
+  .big-sensor-label {
+    display:none; position:absolute; top:5px; left:7px; z-index:2; font-size:0.62rem; color:var(--text);
+    background:rgba(15,18,22,0.75); padding:2px 6px; border-radius:3px; pointer-events:none;
+  }
+  .stage.grid-mode .big-sensor-label { display:block; }
+  @media (max-width:760px) {
+    .stage.grid-mode #bigBody { grid-template-columns:repeat(2, 1fr); grid-template-rows:repeat(3, 1fr); }
+  }
+
   /* ---- jobb oszlop: oldalsáv (görgethető) + rögzített ÉLESÍTÉS lábléc ---- */
   .side-col { flex:0 0 260px; min-width:0; display:flex; flex-direction:column; background:var(--border); }
   /* side-fixed: telemetria + szabályzó csúszkák — alapból mindig látszik, görgetés nélkül.
@@ -239,6 +268,24 @@
   }
   .gripper-row button:hover { border-color:var(--accent); color:var(--accent); }
 
+  .arm-lock {
+    border:1px solid var(--warm); border-radius:8px; padding:0.55rem 0.65rem;
+    color:var(--warm); background:rgba(224,160,92,0.08); font-size:0.66rem; line-height:1.45;
+    margin-bottom:0.6rem;
+  }
+  .arm-jog-title { color:var(--muted); font-size:0.66rem; margin:0.45rem 0 0.25rem; }
+  .arm-jog-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.35rem; }
+  .arm-jog-grid button, .arm-reset {
+    font-family:inherit; padding:0.5rem 0.35rem; border-radius:7px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); cursor:pointer; font-size:0.67rem;
+  }
+  .arm-jog-grid button:hover, .arm-reset:hover { border-color:var(--accent); color:var(--accent); }
+  .arm-sim-readout {
+    margin-top:0.55rem; padding:0.45rem 0.55rem; border:1px solid var(--border); border-radius:7px;
+    color:var(--muted); background:var(--surface); font-size:0.62rem; line-height:1.45;
+  }
+  .arm-reset { width:100%; margin-top:0.4rem; color:var(--muted); }
+
   .telemetry { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0.6rem; margin-bottom:0.8rem; }
   .tele { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:0.5rem 0.7rem; min-width:0; }
   .tele .k { font-size:0.68rem; color:var(--muted); letter-spacing:0.03em; text-transform:uppercase; }
@@ -256,6 +303,12 @@
 <header>
   <h1>Pickerbot Mini — élő bemutató</h1>
   <span id="globalStatus">csatlakozás...</span>
+  <span class="view-switch" title="Fókusznézet: 1 nagy kép + kicsik. Rácsnézet: mind a 6 kép egyenlő méretben, táblázatban.">
+    <label class="toggle" id="viewModeToggleWrap">
+      <input type="checkbox" id="viewModeCheckbox"><span class="sw"></span>
+    </label>
+    rácsnézet
+  </span>
   <a href="../docs/08-kezi-vezerles.md" target="_blank" title="Kar = csak szimuláció. Vészhelyzetben a fizikai leállítót használd.">⚠ részletek</a>
 </header>
 
@@ -305,26 +358,32 @@
     <div class="panel big-panel">
       <div class="panel-body" id="bigBody">
         <div class="big-sensor" id="bigC70">
+          <span class="big-sensor-label">C70 kamera</span>
           <img id="c70Img" alt="A kar C70 kamerájának képe" hidden>
           <canvas id="c70Canvas" width="640" height="480" aria-label="A kar C70 kamerájának képe" hidden></canvas>
           <span class="stat" id="c70Status" role="status">Kamera: kapcsolódás...</span>
         </div>
         <div class="big-sensor" id="bigMap" hidden>
+          <span class="big-sensor-label">Térkép</span>
           <canvas id="mapCanvas" aria-label="A 2D LiDAR által épített foglaltsági térkép" hidden></canvas>
           <span id="mapPlaceholder" class="map-placeholder">Várakozás a /map adatra.</span>
         </div>
         <div class="big-sensor" id="bigRgb" hidden>
+          <span class="big-sensor-label">Hátsó RGB</span>
           <img id="rgbImg" alt="Hátsó RGB kamera (Astra) képe" hidden>
         </div>
         <div class="big-sensor" id="bigDepth" hidden>
+          <span class="big-sensor-label">Hátsó mélység</span>
           <canvas id="depthCanvas" width="640" height="480"></canvas>
           <span class="stat" id="depthStat">-</span>
         </div>
         <div class="big-sensor" id="bigLidar" hidden>
+          <span class="big-sensor-label">LiDAR — felülnézet</span>
           <canvas id="lidarCanvas" width="500" height="500" aria-label="A LiDAR 2D felülnézete"></canvas>
           <span class="stat" id="lidarStat">-</span>
         </div>
         <div class="big-sensor" id="bigPc3d" hidden>
+          <span class="big-sensor-label">3D point cloud + LiDAR</span>
           <div class="pc3d-slot" id="pc3dBigSlot"></div>
           <span class="stat" id="pcStat">-</span>
           <span class="hint">bal gomb + húzás: forgatás · görgő: zoom · jobb gomb + húzás: eltolás</span>
@@ -434,18 +493,38 @@
 
       <div class="panel arm-panel">
         <div class="panel-head">
-          <span>Kar + gripper vezérlés</span>
-          <span class="tag sim">SZIMULÁCIÓ</span>
+          <span>Kar + gripper előkészítés</span>
+          <span class="tag sim">ÉLŐ ZÁROLVA</span>
         </div>
         <div class="panel-body">
-          <div class="slider-row"><label>j1_joint</label><input type="range" id="j0" min="-45" max="45" value="0"><span class="val" id="j0v">0°</span></div>
-          <div class="slider-row"><label>j2_joint</label><input type="range" id="j1" min="-45" max="45" value="0"><span class="val" id="j1v">0°</span></div>
-          <div class="slider-row"><label>j3_joint</label><input type="range" id="j2" min="-45" max="45" value="0"><span class="val" id="j2v">0°</span></div>
-
-          <div class="gripper-row">
-            <button id="gripOpen">Gripper: NYIT</button>
-            <button id="gripClose">Gripper: ZÁR</button>
+          <div class="arm-lock">
+            <b>Nincs valódi karpozíció-visszajelzés.</b> A gyári vezérlő minden gripperparanccsal
+            újraküldi a három karízület célját is. A gombok ezért most csak a korlátozott
+            parancsmodellt próbálják ki; a robotkar nem mozdul.
           </div>
+
+          <div class="arm-jog-title">Talpforgatás · 0,02 rad / kattintás</div>
+          <div class="arm-jog-grid">
+            <button id="armBaseLeft">↶ BALRA</button>
+            <button id="armBaseRight">JOBBRA ↷</button>
+          </div>
+
+          <div class="arm-jog-title">Karvég · 1 cm / kattintás, gyári munkatérkorláttal</div>
+          <div class="arm-jog-grid">
+            <button id="armBack">← HÁTRA</button>
+            <button id="armForward">ELŐRE →</button>
+            <button id="armDown">↓ LE</button>
+            <button id="armUp">FEL ↑</button>
+          </div>
+
+          <div class="arm-jog-title">Gripper · gyári 0…100 skála, 5 / kattintás</div>
+          <div class="gripper-row">
+            <button id="gripOpen">NYIT (−5)</button>
+            <button id="gripClose">ZÁR (+5)</button>
+          </div>
+
+          <div class="arm-sim-readout" id="armSimReadout"></div>
+          <button class="arm-reset" id="armSimReset">Szimulált alaphelyzet visszaállítása</button>
         </div>
       </div>
     </div>
@@ -540,15 +619,33 @@ const bigPillText = {
 // A nagyban látszó szenzor kisképe NEM kér párhuzamosan adatot a robottól (nem duplikáljuk a
 // kamera-streamet) — liveTargets() ilyenkor kihagyja a kisképet a frissítendő elemek közül.
 function liveTargets(sensorKey, bigEl, thumbEl) {
+  // Rácsnézetben minden szenzor nagy eleme aktívnak számít (mind a 6 kép egyszerre látszik) —
+  // ilyenkor a kisképet nem is kell frissíteni, hiszen a bal sáv kisképei rejtve vannak.
+  if (viewMode === 'grid') return [bigEl];
   return activeBig === sensorKey ? [bigEl] : [bigEl, thumbEl];
 }
 let activeBig = null;
+// ================= RÁCSNÉZET / FÓKUSZNÉZET VÁLTÁS =================
+// Kapcsoló a fejlécben: fókusznézetben (eddigi viselkedés) csak 1 szenzor van nagyban, a többi
+// kicsiben a bal sávban; rácsnézetben mind a 6 kép egyenlő méretben, táblázatos rácsban látszik
+// egyszerre — a nagy-nézet konténerében (#bigBody), ugyanott, ahol eddig az 1 nagy kép volt.
+// A vezérlés (jobb oldalsáv) és a napló (bal alsó sarok) helye emiatt NEM változik.
+let viewMode = 'focus'; // 'focus' | 'grid'
+function applyBigVisibility() {
+  Object.entries(bigWrapId).forEach(([key, id]) => {
+    document.getElementById(id).hidden = (viewMode === 'grid') ? false : (key !== activeBig);
+  });
+}
+// C70/RGB MJPEG-nél eddig csak activeBig döntötte el, melyik elem (nagy/kis) éljen — rácsnézetben
+// mindig a NAGY elem a cél, hogy soha ne fusson egyszerre két MJPEG-kapcsolat ugyanahhoz a
+// kamerához (lásd a korábbi sávszélesség-hibát a fenti megjegyzésekben).
+function c70BigActive() { return viewMode === 'grid' || activeBig === 'tileC70'; }
+function rgbBigActive() { return viewMode === 'grid' || activeBig === 'tileRgb'; }
 function setBigSensor(target) {
   if (!bigWrapId[target] || target === activeBig) return;
   const prev = activeBig;
   activeBig = target;
-  Object.values(bigWrapId).forEach(id => { document.getElementById(id).hidden = true; });
-  document.getElementById(bigWrapId[target]).hidden = false;
+  applyBigVisibility();
   document.getElementById('bigLabel').textContent = bigLabelText[target];
   document.getElementById('bigPill').textContent = bigPillText[target];
   document.getElementById('bigHead').dataset.sensor = target;
@@ -566,6 +663,31 @@ document.querySelectorAll('.thumb-tile').forEach(tile => {
 });
 // Az induló setBigSensor('tileC70') hívás a szkript VÉGÉN van (ld. lent), miután a C70/RGB
 // kisképeket kezelő const-ok (c70ImgThumb, rgbImgThumb, stb.) már mind léteznek.
+
+// A rácsnézet kapcsolóját és a rácscsempékre kattintást is itt kötjük be — a hivatkozott
+// függvények (movePc3d, refreshC70ThumbFeed, refreshRgbFeed) lejjebb vannak deklarálva, de
+// function-deklarációként hoistolva vannak, és ténylegesen csak később, kattintáskor futnak le.
+function setViewMode(mode) {
+  if (mode === viewMode) return;
+  viewMode = mode;
+  document.querySelector('.stage').classList.toggle('grid-mode', mode === 'grid');
+  applyBigVisibility();
+  movePc3d(mode === 'grid' ? true : activeBig === 'tilePc3d');
+  refreshC70ThumbFeed();
+  refreshRgbFeed();
+}
+document.getElementById('viewModeCheckbox').addEventListener('change', (e) => {
+  setViewMode(e.target.checked ? 'grid' : 'focus');
+});
+// Rácsnézetben egy csempére kattintva visszavált fókusznézetbe, és azt a szenzort mutatja nagyban.
+Object.entries(bigWrapId).forEach(([key, id]) => {
+  document.getElementById(id).addEventListener('click', () => {
+    if (viewMode !== 'grid') return;
+    document.getElementById('viewModeCheckbox').checked = false;
+    setViewMode('focus');
+    setBigSensor(key);
+  });
+});
 
 // ================= TÉRKÉP (/map, SLAM) =================
 const mapTopic = new ROSLIB.Topic({
@@ -709,7 +831,7 @@ function onC70RosImage(msg) {
       frame.data[dst + 3] = 255;
     }
   }
-  const canvas = activeBig === 'tileC70' ? c70Canvas : c70CanvasThumb;
+  const canvas = c70BigActive() ? c70Canvas : c70CanvasThumb;
   const otherCanvas = canvas === c70Canvas ? c70CanvasThumb : c70Canvas;
   [c70Img, c70ImgThumb].forEach(el => { el.hidden = true; });
   otherCanvas.hidden = true;
@@ -736,7 +858,7 @@ function startC70Fallback() {
 }
 
 function onC70MjpegLoad(event) {
-  const expected = activeBig === 'tileC70' ? c70Img : c70ImgThumb;
+  const expected = c70BigActive() ? c70Img : c70ImgThumb;
   if (event.currentTarget !== expected) {
     event.currentTarget.hidden = true;
     return;
@@ -786,7 +908,7 @@ setInterval(() => {
     c70Status.textContent = 'Kamera: a ROS-kép nem frissül (15+ mp)';
   }
   if (c70FallbackStarted) {
-    const target = activeBig === 'tileC70' ? c70Img : c70ImgThumb;
+    const target = c70BigActive() ? c70Img : c70ImgThumb;
     const other = target === c70Img ? c70ImgThumb : c70Img;
     other.removeAttribute('src');
     other.hidden = true;
@@ -797,7 +919,7 @@ setInterval(() => {
 }, 5000);
 // Pontosan egy C70 MJPEG-kérés fusson: a nagy képé, ha a C70 az aktív nézet, egyébként a kisképé.
 function refreshC70ThumbFeed() {
-  const target = activeBig === 'tileC70' ? c70Img : c70ImgThumb;
+  const target = c70BigActive() ? c70Img : c70ImgThumb;
   const other = target === c70Img ? c70ImgThumb : c70Img;
   const targetCanvas = target === c70Img ? c70Canvas : c70CanvasThumb;
   const otherCanvas = targetCanvas === c70Canvas ? c70CanvasThumb : c70Canvas;
@@ -819,19 +941,19 @@ const rgbStreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/c
 // A nagy ÉS a kis RGB-kép is csak akkor tartson nyitva MJPEG-kapcsolatot, ha épp ő a látszó —
 // a másikét le kell állítani, különben a web_video_server-nél versenyeznek egymással (lásd setBigSensor()).
 function refreshRgbFeed() {
-  const target = activeBig === 'tileRgb' ? rgbImg : rgbImgThumb;
+  const target = rgbBigActive() ? rgbImg : rgbImgThumb;
   const other = target === rgbImg ? rgbImgThumb : rgbImg;
   other.removeAttribute('src');
   other.hidden = true;
   target.hidden = true;
-  if (activeBig === 'tileRgb') {
+  if (rgbBigActive()) {
     rgbImg.src = `${rgbStreamUrl}&_=${Date.now()}`;
   } else {
     rgbImgThumb.src = `${rgbStreamUrl}&_=${Date.now()}`;
   }
 }
 function onRgbLoad(event) {
-  const expected = activeBig === 'tileRgb' ? rgbImg : rgbImgThumb;
+  const expected = rgbBigActive() ? rgbImg : rgbImgThumb;
   event.currentTarget.hidden = event.currentTarget !== expected;
 }
 function onRgbError(event) { event.currentTarget.hidden = true; }
@@ -841,7 +963,7 @@ function onRgbError(event) { event.currentTarget.hidden = true; }
 });
 refreshRgbFeed(); // induláskor a RGB nincs nagyban, tehát a kisképe azonnal éljen, a nagyé nem
 setInterval(() => {
-  const target = activeBig === 'tileRgb' ? rgbImg : rgbImgThumb;
+  const target = rgbBigActive() ? rgbImg : rgbImgThumb;
   if (!document.hidden && (!target.currentSrc || !target.naturalWidth)) refreshRgbFeed();
 }, 5000);
 
@@ -1545,18 +1667,111 @@ function renderTelemetry() {
 setInterval(renderTelemetry, 300);
 renderTelemetry();
 
-// ================= KAR + GRIPPER — MINDIG SZIMULÁCIÓ =================
-// Ez a szekció szándékosan SOHA nem hív rosbridge-et — lásd docs/08-kezi-vezerles.md.
-['j0','j1','j2'].forEach((id) => {
-  const slider = document.getElementById(id);
-  const val = document.getElementById(id + 'v');
-  slider.addEventListener('input', () => {
-    val.textContent = slider.value + "°";
-    log('sim', `SZIMULÁCIÓ — ${id} kért szög: ${slider.value}° (nincs valós küldés, csak napló)`);
-  });
+// ================= KAR + GRIPPER — KORLÁTOZOTT PARANCSMODELL, ÉLŐ KÜLDÉS NÉLKÜL =================
+// A gyári stepper_arm forrásból ellenőrzött adatok (2026-09-23):
+//   /arm_cmd = [j1_rad, j2_rad, j3_rad, gripper_0_100], 0=nyitva, 100=zárva.
+// Az alsó vezérlő NEM ad vissza valódi karpozíciót. Egy gripperparancs is újraküldi mindhárom
+// ízületi célt, ezért még a gripper sem kapcsolható élőre ismert/szinkronizált karpozíció nélkül.
+// A felület szándékosan nem tartalmaz ROSLIB.Topic('/arm_cmd') publishert.
+const ARM_JOINT_STEP = 0.02;
+const ARM_EE_STEP = 0.01;
+const ARM_GRIP_STEP = 5;
+const ARM_LINK_B = 0.14;
+const ARM_LINK_C = 0.16;
+const ARM_LIMITS = [
+  [-1.9, 1.9],
+  [-0.17, 1.5708],
+  [-1.179 + Math.PI / 2, 0.7273 + Math.PI / 2]
+];
+const ARM_WORKSPACE_ARCS = [
+  [0.0, 0.14, 0.16, -1.3, 0.7, 'ge'],
+  [0.0, 0.0, 0.0447, -0.65, -0.25, 'ge'],
+  [0.0, 0.0, 0.26, -0.65, 1.1, 'le'],
+  [0.0, -0.16, 0.14, -0.150, 1.3, 'ge'],
+  [0.138, -0.0237, 0.16, -1.57, -1.0, 'le']
+];
+const ARM_SIM_HOME = Object.freeze({ q: [0.0, 1.570796, 0.391797], x: 0.062, y: -0.008, grip: 0 });
+let armSim = { q: [...ARM_SIM_HOME.q], x: ARM_SIM_HOME.x, y: ARM_SIM_HOME.y, grip: ARM_SIM_HOME.grip };
+
+function armInsideWorkspace(x, y) {
+  const count = y > 0 ? 4 : 5;
+  for (let i = 0; i < count; i++) {
+    const [cx, cy, radius, , , mode] = ARM_WORKSPACE_ARCS[i];
+    const d2 = (x - cx) ** 2 + (y - cy) ** 2;
+    const r2 = radius ** 2;
+    if ((mode === 'le' && d2 > r2) || (mode === 'ge' && d2 < r2)) return false;
+  }
+  return true;
+}
+function armForwardKinematics(j2, j3) {
+  return {
+    x: ARM_LINK_B * Math.cos(j2) + ARM_LINK_C * Math.cos(j3 - Math.PI + j2),
+    y: ARM_LINK_B * Math.sin(j2) + ARM_LINK_C * Math.sin(j3 - Math.PI + j2)
+  };
+}
+function armPlanarSafe(j2, j3) {
+  if (j2 < ARM_LIMITS[1][0] || j2 > ARM_LIMITS[1][1]) return false;
+  if (j3 < ARM_LIMITS[2][0] || j3 > ARM_LIMITS[2][1]) return false;
+  if (j2 + j3 < Math.PI / 2) return false;
+  const ee = armForwardKinematics(j2, j3);
+  return armInsideWorkspace(ee.x, ee.y);
+}
+function armInverseKinematics(x, y) {
+  const radius = Math.hypot(x, y);
+  if (!radius || !armInsideWorkspace(x, y)) return null;
+  const cosB1 = (ARM_LINK_B ** 2 + radius ** 2 - ARM_LINK_C ** 2) / (2 * ARM_LINK_B * radius);
+  const cosC = (ARM_LINK_B ** 2 + ARM_LINK_C ** 2 - radius ** 2) / (2 * ARM_LINK_B * ARM_LINK_C);
+  if (cosB1 < -1 || cosB1 > 1 || cosC < -1 || cosC > 1) return null;
+  const j2 = Math.acos(cosB1) + Math.atan2(y, x);
+  const j3 = Math.acos(cosC);
+  return armPlanarSafe(j2, j3) ? [j2, j3] : null;
+}
+function renderArmSim() {
+  const deg = armSim.q.map(v => (v * 180 / Math.PI).toFixed(1));
+  document.getElementById('armSimReadout').textContent =
+    'Szimulált cél: talp ' + deg[0] + '° · váll ' + deg[1] + '° · könyök ' + deg[2] + '° · ' +
+    'karvég x=' + armSim.x.toFixed(3) + ' m, y=' + armSim.y.toFixed(3) + ' m · gripper ' + armSim.grip + '/100';
+}
+function armSimRejected(label) {
+  log('sim', 'SZIMULÁCIÓ — ' + label + ': a gyári munkatér- vagy ízületi korlát elutasította');
+}
+function armSimBase(delta, label) {
+  const next = armSim.q[0] + delta;
+  if (next < ARM_LIMITS[0][0] || next > ARM_LIMITS[0][1]) return armSimRejected(label);
+  armSim.q[0] = next;
+  renderArmSim();
+  log('sim', 'SZIMULÁCIÓ — ' + label + '; élő karparancs nem ment ki');
+}
+function armSimMove(dx, dy, label) {
+  const x = armSim.x + dx, y = armSim.y + dy;
+  const planar = armInverseKinematics(x, y);
+  if (!planar) return armSimRejected(label);
+  armSim.q[1] = planar[0];
+  armSim.q[2] = planar[1];
+  armSim.x = x;
+  armSim.y = y;
+  renderArmSim();
+  log('sim', 'SZIMULÁCIÓ — ' + label + '; élő karparancs nem ment ki');
+}
+function armSimGrip(delta, label) {
+  armSim.grip = Math.max(0, Math.min(100, armSim.grip + delta));
+  renderArmSim();
+  log('sim', 'SZIMULÁCIÓ — ' + label + ': ' + armSim.grip + '/100; élő karparancs nem ment ki');
+}
+document.getElementById('armBaseLeft').addEventListener('click', () => armSimBase(-ARM_JOINT_STEP, 'talp balra'));
+document.getElementById('armBaseRight').addEventListener('click', () => armSimBase(ARM_JOINT_STEP, 'talp jobbra'));
+document.getElementById('armBack').addEventListener('click', () => armSimMove(-ARM_EE_STEP, 0, 'karvég hátra'));
+document.getElementById('armForward').addEventListener('click', () => armSimMove(ARM_EE_STEP, 0, 'karvég előre'));
+document.getElementById('armDown').addEventListener('click', () => armSimMove(0, -ARM_EE_STEP, 'karvég le'));
+document.getElementById('armUp').addEventListener('click', () => armSimMove(0, ARM_EE_STEP, 'karvég fel'));
+document.getElementById('gripOpen').addEventListener('click', () => armSimGrip(-ARM_GRIP_STEP, 'gripper nyit'));
+document.getElementById('gripClose').addEventListener('click', () => armSimGrip(ARM_GRIP_STEP, 'gripper zár'));
+document.getElementById('armSimReset').addEventListener('click', () => {
+  armSim = { q: [...ARM_SIM_HOME.q], x: ARM_SIM_HOME.x, y: ARM_SIM_HOME.y, grip: ARM_SIM_HOME.grip };
+  renderArmSim();
+  log('sim', 'SZIMULÁCIÓ — gyári parancsmodell alaphelyzete visszaállítva; élő karparancs nem ment ki');
 });
-document.getElementById('gripOpen').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper NYIT parancs (nincs valós küldés, csak napló)"));
-document.getElementById('gripClose').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper ZÁR parancs (nincs valós küldés, csak napló)"));
+renderArmSim();
 
 // A kis/nagy nézet induló beállítása csak itt, a szkript végén történik — ekkorra minden
 // szenzorhoz tartozó const (c70ImgThumb, rgbImgThumb stb.) már létezik, tehát a

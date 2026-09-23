@@ -22,9 +22,9 @@ inspection, base on the floor, no arm command ever sent):
   into int16 by the firmware bridge — callers of this module should still
   just pass radians, the scaling is the robot's own serial-protocol detail.
   `gripper_raw` is cast straight to `uint8_t` with NO scaling in the C++
-  source — its real 0..255 (or narrower) open/close convention was NOT
-  found anywhere else in the source tree (no other in-repo publisher of
-  `/arm_cmd` to learn the convention from), so it is still UNVERIFIED.
+  driver. The robot's `stepper_arm` sources were checked on 2026-09-23:
+  the supported range is 0..100, where 0 means open and 100 means closed;
+  the vendor keyboard controller changes it in increments of 5.
 - Real joint names/limits, read from `mini_mec_moveit_four.urdf` on the
   robot (`turn_on_wheeltec_robot/urdf/mini_mec_moveit_four.urdf`): only
   `j1_joint`, `j2_joint`, `j3_joint` are independently commandable via
@@ -38,17 +38,16 @@ inspection, base on the floor, no arm command ever sent):
   them together.
 
 STILL UNVERIFIED / left mock-only on purpose:
-- The exact `gripper_raw` value range and what "open" vs "closed" means
-  numerically (0..255? 0..1? a specific pair of values?).
 - Real accel/velocity behavior in practice — the URDF `velocity="0"` field
   gives no usable ceiling, so no rate-limit number here is backed by a
   measurement (unlike `base_drive.py`, which errs toward a conservative
   guessed teleop cap; the arm has a collision risk with the gripper/base/
   whatever it's holding, so a real send path is not being added until an
   operator does a deliberate, supervised first physical joint-by-joint
-  test with the gripper convention confirmed by direct observation).
-- No physical arm motion command has ever been sent to this robot this
-  session or before, as far as this codebase's history shows.
+  test after the documented grinding/beeping joint fault is inspected.
+- The lower controller sends no measured arm position back to ROS. Even a
+  gripper-only change must repeat all three joint targets, so it cannot be
+  sent safely until the physical pose is known and synchronized.
 
 Given the above, this module keeps j1/j2/j3 limits as REAL (not
 placeholder) — `JOINT_LIMITS_RAD` below is the actual URDF data — but
@@ -77,11 +76,11 @@ JOINT_LIMITS_RAD = [
 ]
 NUM_JOINTS = len(JOINT_LIMITS_RAD)
 
-# Gripper (arm_cmd data[3], cast to uint8_t by the firmware bridge) — the
-# real open/closed numeric convention is UNVERIFIED (see docstring), so
-# this stays a conservative placeholder 0..1 fraction for the mock UI only.
-GRIPPER_CLOSED = 0.0
-GRIPPER_OPEN = 1.0
+# Verified in the robot's stepper_arm sources on 2026-09-23.
+GRIPPER_OPEN = 0.0
+GRIPPER_CLOSED = 100.0
+GRIPPER_MIN = GRIPPER_OPEN
+GRIPPER_MAX = GRIPPER_CLOSED
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
@@ -89,7 +88,7 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 
 
 class ArmSafety:
-    """Clamps a requested joint-angle list to PLACEHOLDER_JOINT_LIMITS_RAD.
+    """Clamps a requested joint-angle list to JOINT_LIMITS_RAD.
     Kept as its own small class (mirroring Go2's JointSafetyManager split
     from LowCmdSender) so the clamp logic can be unit-tested and reused
     independently of the mock sender."""
@@ -103,7 +102,7 @@ class ArmSafety:
         return [_clamp(float(v), lower, upper) for v, (lower, upper) in zip(q, self.limits)]
 
     def clamp_gripper(self, value: float) -> float:
-        return _clamp(float(value), GRIPPER_CLOSED, GRIPPER_OPEN)
+        return _clamp(float(value), GRIPPER_MIN, GRIPPER_MAX)
 
     def is_safe(self, q) -> bool:
         if len(q) != len(self.limits):
@@ -137,8 +136,8 @@ class MockArmSender:
         return command
 
     def send_gripper(self, value: float):
-        """MOCK send of a gripper open/close command (0.0 closed .. 1.0
-        open). Clamps via ArmSafety, records the command, and returns it."""
+        """MOCK send of a gripper command (0 open .. 100 closed).
+        Clamps via ArmSafety, records the command, and returns it."""
         safe_value = self.safety.clamp_gripper(value)
         command = {
             "kind": "gripper",

@@ -21,9 +21,10 @@
 - Ez a Wheeltec `turn_on_wheeltec_robot` alap-driver saját, jól dokumentált konvenciója, amit a gyári `wheeltec_joy_control` package is használ.
 - Egy Twist (linear.x/y, angular.z) formátumhoz nem kell ízület-szintű geometriai adat, ami hiányzik — csak sebesség-parancs.
 
-**A kar mock-only marad** (2026-09-18 frissítés: a topic/üzenet/ízület-limit már valós, lásd lent az "Élő ellenőrzés" szakaszt — de a küldési útvonal még mindig nincs bekötve), mert:
-- A gripper-érték (`arm_cmd` `data[3]`) numerikus nyitott/zárt konvenciója **nincs megerősítve** — ez az egyetlen még hiányzó darab a teljes vezérlési lánchoz.
-- Egy 4 DOF karnál egy rossz gripper-érték vagy nem tesztelt sebesség/gyorsulás a gripper/bázis/tartott tárgy ütközését okozhatja — ez nem olyan kockázat, amit "óvatos becsléssel" el lehet fedezni, mint egy lassú bázis-sebességnél.
+**A kar mock-only marad.** A `/arm_cmd` topic és a gripper konvenciója már ismert, de az alsó vezérlő nem küld vissza mért karpozíciót. Minden parancs négy értéket tartalmaz, ezért egy grippermódosítás is új célra küldheti mindhárom kartengelyt. A 2026-09-19-i darálás és sípolás mellett ez nem kapcsolható biztonságosan élőre.
+- A gripper gyári tartománya `0..100`: `0 = nyitva`, `100 = zárva`, a gyári kézi vezérlő lépése `5`.
+- A biztonságos karfelület nem abszolút csúszkákat használ, hanem a gyári kódhoz illeszkedő kis lépéses gombokat: talp ±0,02 rad; karvég X/Y ±0,01 m; gripper ±5.
+- A gombos modell a gyári ízületi és munkatérkorlátokat ellenőrzi, de élő küldéshez előbb ismert fizikai alaphelyzet és a hibás ízület átvizsgálása kell.
 - A modul szerkezetileg (import-szint, AST-teszt) így is nem tud valós ROS API-t elérni — a valós küldés bekötése külön, tudatos következő lépés.
 
 ## A biztonsági plafonok pontos értékei és miért ilyenek
@@ -44,7 +45,19 @@ Ezzel szemben `scripts/control_panel.html` a fizikai kontrollerrel 2026-09-23-á
 
 Ha valaha a `base_drive.py` modult tényleges publisherbe kötik, akkor ott is a fent mért értékekre (vagy azoknál óvatosabbra) kell állítani a konstansokat, és ezt a táblázatot frissíteni kell — addig a két fájl közti eltérés szándékos, nem hiba.
 
-`scripts/xavier_control/arm_control.py` `JOINT_LIMITS_RAD`: **2026-09-18 óta valós adat**, `mini_mec_moveit_four.urdf`-ből olvasva (`j1_joint`/`j2_joint`/`j3_joint`, mindegyik ±0.785 rad). A gripper-érték továbbra sincs kalibrálva — lásd lent az "Élő ellenőrzés" szakaszt.
+`scripts/xavier_control/arm_control.py` `JOINT_LIMITS_RAD` értékei a betöltött URDF óvatos ±0,785 rad határai. A roboton talált gyári `stepper_arm/src/stepper_motor_arm.cpp` ettől eltérő mechanikai modellt használ: j1 `[-1,9; 1,9]`, j2 `[-0,17; 1,5708]`, j3 `[0,3918; 2,2981]` rad, továbbá `j2+j3 >= π/2` és öt munkatérív is korlátozza a karvéget. A webes szimuláció ezeket a gyári, összetett korlátokat használja; a Python modul megmarad a szűkebb, mock-only tartományban.
+
+## 2026-09-23: a kar- és grippervezérlés lezárt műszaki állapota
+
+Olvasó jellegű robotvizsgálattal, mozgásparancs nélkül ellenőrizve:
+
+- `/arm_cmd` típusa `std_msgs/Float32MultiArray`, sorrendje `[j1_rad, j2_rad, j3_rad, gripper]`.
+- A gripper skálája biztosan `0..100`; a gyári automata pick kód `100` értékkel zár és `0` értékkel nyit.
+- A vezérlő soros visszajelző csomagja csak alvázsebességet, IMU-adatot és akkufeszültséget tartalmaz. Valódi ízületi pozíció vagy szervóhiba nem érkezik vissza.
+- A ROS `/joint_states` karértékei nullák és modelladatok, nem szenzormérések.
+- Emiatt az abszolút csúszkás vezérlés elvetve. A webes panel kis lépéses, gyári kinematikát követő gombokra lett átalakítva, de továbbra sem publikál `/arm_cmd` üzenetet.
+
+**Az élő bekapcsolás feltételei:** az érintett ízület áramtalanított mechanikai átvizsgálása; reprodukálható és fizikailag igazolt alaphelyzet; felügyelt egytengelyes próba 0,02 rad lépésekkel; ezután külön kar-élesítés és parancsidőkorlát kialakítása. A gripper első élő próbája is csak ezután végezhető, mert a gripperparancs három ízületi célt is tartalmaz.
 
 ## Első élő teszt — lépésről lépésre (amikor a robot legközelebb elérhető)
 
@@ -78,14 +91,14 @@ Indított bringup: `roslaunch turn_on_wheeltec_robot turn_on_wheeltec_robot.laun
 
 **Megerősítve:**
 - `/cmd_vel` **valós**, `geometry_msgs/Twist`, feliratkozó: `/wheeltec_robot` node. `base_drive.py` és `control_panel.html` feltételezése helyes volt.
-- `/arm_cmd` is **valós** (eddig ismeretlen volt) — `std_msgs/Float32MultiArray`, ugyanaz a `/wheeltec_robot` node fogadja (nincs külön MoveIt action-szerver). `wheeltec_robot.cpp` `joint_states_Callback`-jából leolvasva: `data = [j1_rad, j2_rad, j3_rad, gripper_raw]`. A három szög radiánban megy, a firmware-híd ×1000-rel skálázva int16-ba csomagolja — a hívónak radiánt kell adnia. A `gripper_raw` közvetlenül `uint8_t`-re van castolva, skálázás nélkül — **a nyitott/zárt pontos numerikus konvenciója továbbra sincs megerősítve** (a repóban sehol máshol nincs másik `/arm_cmd` publisher, amiből ki lehetne olvasni).
+- `/arm_cmd` is **valós** (eddig ismeretlen volt) — `std_msgs/Float32MultiArray`, ugyanaz a `/wheeltec_robot` node fogadja (nincs külön MoveIt action-szerver). `wheeltec_robot.cpp` `joint_states_Callback`-jából leolvasva: `data = [j1_rad, j2_rad, j3_rad, gripper_raw]`. A három szög radiánban megy, a firmware-híd ×1000-rel skálázva int16-ba csomagolja — a hívónak radiánt kell adnia. A 2026-09-23-i további vizsgálat a gripper konvencióját is azonosította: `0 = nyitva`, `100 = zárva`.
 - Valós ízület-nevek/határok a robot `mini_mec_moveit_four.urdf`-jéből (`turn_on_wheeltec_robot/urdf/`): `j1_joint`, `j2_joint`, `j3_joint` — mindegyik `type="revolute"`, `lower="-0.785" upper="0.785"` (±45°), `effort="100"` (egység nem világos, valószínűleg generikus MoveIt-exportőr alapérték, nem mért adat), `velocity="0"` (nincs megadva — **nem** "korlátlan", ebből sebesség-plafont nem lehet levezetni). A `/joint_states`-ben látott `j4_1_joint..j4_6_joint` egy mechanikusan összekötött gripper-ujj szerelvény, nem külön vezérelhető — az `/arm_cmd` egyetlen `gripper_raw` értéke mozgatja mindet együtt.
-- **`arm_control.py` frissítve valós adattal:** `PLACEHOLDER_JOINT_LIMITS_RAD` → `JOINT_LIMITS_RAD`, 4 kitalált érték helyett a 3 valós URDF-limit (±0.785 rad mindhárom ízületre). A modul **továbbra is mock-only** — a gripper-konvenció és a valós mozgás-viselkedés (sebesség/gyorsulás) még nincs megerősítve, ezért a valós küldési útvonal szándékosan nincs bekötve. 25/25 teszt zöld mindkét klónban (`C:\dev\NERO_GO2\xavier-pickerbot\` és `C:\Users\user\NERO_GO2\xavier-pickerbot\`) a frissítés után.
+- **`arm_control.py` frissítve valós adattal:** `PLACEHOLDER_JOINT_LIMITS_RAD` → `JOINT_LIMITS_RAD`, 4 kitalált érték helyett a 3 URDF-limit (±0.785 rad mindhárom ízületre). A modul **továbbra is mock-only**; a 2026-09-23-i frissítés óta a gripper helyes `0..100` tartományát használja.
 
 **Még nyitva marad — kar valós küldés előtt ez kell:**
-1. `gripper_raw` numerikus konvenciójának tisztázása (pl. egy manuális, kis értékű teszt-küldés közvetlen `rostopic pub`-bal, valaki a gripper mellett figyel, NEM ezen a modulon át).
-2. Valós sebesség/gyorsulás-viselkedés megfigyelése kis, felügyelt mozdulatokkal, mielőtt bármilyen automatizált küldő épülne rá.
-3. Utána — külön, tudatos lépésként — egy valós `ArmSender` építése a `lowcmd_sender.py`/`base_drive.py` mintájára, ARMED-gate mögött.
+1. A daráló/sípoló ízület mechanikai átvizsgálása áramtalanítva.
+2. Fizikailag igazolt alaphelyzet és kis, felügyelt egytengelyes mozdulatok, mielőtt automatizált küldő épülne rá.
+3. Utána külön kar-élesítésű valós `ArmSender`, amely csak a gombos, korlátozott parancsmodellt engedi ki.
 
 ## Nyitott kérdés (bázis) — LEZÁRVA 2026-09-18
 

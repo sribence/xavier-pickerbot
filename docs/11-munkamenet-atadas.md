@@ -274,6 +274,16 @@ Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó j
   2. Élő, a felhasználó saját gépén/böngészőjében történő visszaigazolás erre a teljes új elrendezésre (kis-kép sáv, nagy nézet váltás, rögzített napló/ÉLESÍTÉS, görgethető jobb oldalsáv) — még nem történt meg, csak az én saját böngésző-tesztem (ami a robot LAN-ját nem éri el, tehát élő kamera-/telemetria-adatot nem tud ellenőrizni, csak az elrendezést és a JS-hibátlanságot).
   3. A `docs/` mappa átnézése/rendezése (korábbról elnapolt altéma) — továbbra sem kezdődött el.
 
+## Kar- és grippervezérlés műszaki lezárása (2026-09-23)
+
+- A robotot csak olvasó jelleggel vizsgáltuk; `/arm_cmd` parancs nem ment ki.
+- A gyári `stepper_arm` forrásból igazolva: a gripper skálája `0..100`, ahol `0 = nyitva`, `100 = zárva`, a kézi lépés `5`.
+- A driver visszajelző csomagja nem tartalmaz mért karpozíciót vagy szervóhibát. A `/joint_states` karértékei nem valódi mérések.
+- Egy gripperparancs is együtt küldi a három ízületi célt, ezért a gripper külön sem tehető biztonságosan élővé ismeretlen karpozíció mellett.
+- Az abszolút szögcsúszkák kikerültek. A webes panel talp-balra/jobbra, karvég-előre/hátra/fel/le és gripper-nyit/zár gombos szimulációt használ, a gyári kis lépésekkel és munkatérkorlátokkal.
+- Élő `/arm_cmd` publisher továbbra sincs. A daráló/sípoló ízület mechanikai átvizsgálása és egy igazolt alaphelyzet nélkül ne kapcsold be.
+- Részletes átadás: [13-kar-es-gripper-vezerles.md](13-kar-es-gripper-vezerles.md).
+
 ## Robotoldali szenzorindítás kivizsgálása (2026-09-23)
 
 - A tiszta boot utáni állapotot élőben megmértük: az `/odom` és az Astra mélység működött, a `/scan`, `/map`, `/usb_cam/image_raw` és `/camera/rgb/image_raw` nem adott friss üzenetet.
