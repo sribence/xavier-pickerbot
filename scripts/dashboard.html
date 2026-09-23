@@ -106,28 +106,31 @@
     </div>
   </div>
 
-  <div class="panel extra-sensor">
-    <div class="panel-head">
-      <span>RGB kamera (Astra)</span>
-      <label class="toggle" id="toggleColorWrap">
-        <input type="checkbox" id="toggleColor" checked>
-        <span class="sw"></span><span class="lbl">be</span>
-      </label>
+  <div class="demo-pair">
+    <div class="panel">
+      <div class="panel-head">
+        <span>Hátsó RGB kamera (Astra)</span>
+        <span class="pill">/camera/rgb/image_raw</span>
+        <label class="toggle" id="toggleColorWrap">
+          <input type="checkbox" id="toggleColor" checked>
+          <span class="sw"></span><span class="lbl">be</span>
+        </label>
+      </div>
+      <div class="panel-body"><img id="rgbImg" src=""></div>
     </div>
-    <div class="panel-body"><img id="rgbImg" src=""></div>
-  </div>
-
-  <div class="panel extra-sensor">
-    <div class="panel-head">
-      <span>Mélységkamera</span>
-      <label class="toggle" id="toggleDepthWrap">
-        <input type="checkbox" id="toggleDepth" checked>
-        <span class="sw"></span><span class="lbl">be</span>
-      </label>
-    </div>
-    <div class="panel-body">
-      <canvas id="depthCanvas" width="640" height="480"></canvas>
-      <span class="stat" id="depthStat">-</span>
+    <div class="panel">
+      <div class="panel-head">
+        <span>Hátsó mélységkamera (Astra)</span>
+        <span class="pill">/camera/depth/image_raw</span>
+        <label class="toggle" id="toggleDepthWrap">
+          <input type="checkbox" id="toggleDepth" checked>
+          <span class="sw"></span><span class="lbl">be</span>
+        </label>
+      </div>
+      <div class="panel-body">
+        <canvas id="depthCanvas" width="640" height="480"></canvas>
+        <span class="stat" id="depthStat">-</span>
+      </div>
     </div>
   </div>
 
@@ -173,7 +176,8 @@ const WEB_VIDEO_PORT = 8080;
 const ROSBRIDGE_PORT = 9090;
 
 // ---------- image streams via web_video_server (csak sima 8-bit szinű képekhez jó) ----------
-if (!EMBEDDED) document.getElementById('rgbImg').src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
+// A hátsó RGB kamera (Astra) 2026-09-23 óta beágyazva is látszik, nem csak a teljes dashboardon.
+document.getElementById('rgbImg').src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
 const c70Img = document.getElementById('c70Img');
 // A teljes 640×480/95% MJPEG túl sok adatot torlasztott a kapcsolatban.
 const c70StreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/usb_cam/image_raw&width=320&height=240&quality=55`;
@@ -448,9 +452,10 @@ document.addEventListener('visibilitychange', () => {
   if (!ros.isConnected) { try { ros.connect(ROS_URL); } catch (e) { /* soron következő próba */ } }
 });
 
-// A beágyazott nézet csak a C70-et és a /map-et kéri le. A többi szenzor
-// feliratkozása és a 3D renderelés a teljes dashboardon fut.
-if (!EMBEDDED) {
+// A beágyazott nézet 2026-09-23 óta a hátsó RGB+mélység kamerát is kéri (nem csak a C70-et
+// és a /map-et) — ez a két 2D canvas-nézet könnyű. A 2D LiDAR felülnézet és a 3D pontfelhő
+// (Three.js) továbbra is csak a teljes dashboardon fut, mert azok nehezebbek és a /map amúgy
+// is lefedi ugyanazt a beágyazott nézetben.
 // ---------- Depth kép saját canvas-renderrel (web_video_server nem tud 16UC1-et bgr8-ra konvertálni) ----------
 const depthTopic = new ROSLIB.Topic({
   ros, name: '/camera/depth/image_raw', messageType: 'sensor_msgs/Image',
@@ -521,6 +526,8 @@ wireToggle('toggleColor', 'toggleColorWrap', svcColor, 'be', 'ki', (on) => {
 });
 wireToggle('toggleDepth', 'toggleDepthWrap', svcDepth, 'be', 'ki');
 
+// A 2D LiDAR felülnézet és a 3D pontfelhő (Three.js) innentől csak a teljes dashboardon fut.
+if (!EMBEDDED) {
 // ---------- 2D LiDAR view ----------
 const scanTopic = new ROSLIB.Topic({ ros, name: '/scan', messageType: 'sensor_msgs/LaserScan' });
 const lc = document.getElementById('lidarCanvas');

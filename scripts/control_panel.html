@@ -133,9 +133,12 @@
   .tele.bad .v { color:var(--bad); }
   .tele.stale .v { color:var(--faint); }
 
-  .camera-embed { border:0; width:100%; height:480px; background:var(--bg); }
+  /* 2026-09-23: a beágyazott nézet a C70+térkép sor alatt most már a hátsó RGB+mélység
+     kamera sorát is mutatja, ezért az iframe majdnem kétszer olyan magas kell legyen.
+     A pontos méret még hangolásra vár (ld. napló, "kompaktálás" lépés). */
+  .camera-embed { border:0; width:100%; height:920px; background:var(--bg); }
   .embed-note { font-size:0.72rem; color:var(--faint); padding:0.4rem 0.8rem; }
-  @media (max-width:520px) { .camera-embed { height:900px; } }
+  @media (max-width:520px) { .camera-embed { height:1700px; } }
 </style>
 </head>
 <body>
@@ -165,16 +168,38 @@
         <span class="state" id="armState">nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra</span>
       </div>
 
+      <div class="limit-box" id="linLimitBox">
+        <div class="slider-row">
+          <label for="linLimit">előre-hátra sebesség</label>
+          <div class="range-wrap">
+            <input type="range" id="linLimit" min="0.05" max="0.55" step="0.01" value="0.5">
+          </div>
+          <span class="val" id="linLimitV" style="width:84px;">0.50 m/s</span>
+        </div>
+        <div class="limit-note">Csak a W/S (előre/hátra) gombokra vonatkozik. A felső határ (0.55 m/s) a fizikai kontrollerrel 2026-09-23-án mért csúcssebesség (telemetria alapján), tehát a webes vezérlés ennél gyorsabb nem lehet, mint amit a kontrollerrel is meg tudsz mutatni. Újratöltéskor visszaáll 0.50 m/s-ra.</div>
+      </div>
+
+      <div class="limit-box" id="strafeLimitBox">
+        <div class="slider-row">
+          <label for="strafeLimit">oldalazás sebessége</label>
+          <div class="range-wrap">
+            <input type="range" id="strafeLimit" min="0.03" max="0.57" step="0.01" value="0.5">
+          </div>
+          <span class="val" id="strafeLimitV" style="width:84px;">0.50 m/s</span>
+        </div>
+        <div class="limit-note">Csak az A/D (oldalazás) gombokra vonatkozik. A korábbi "donut"-hiba (0 forgásparancs mellett is forgott a robot) megoldva: a kerekek nem voltak X-mintában szerelve, ezt 2026-09-23-án megjavítottuk (ld. napló) és élő roboton is ellenőriztük — az oldalazás most tisztán oldalra megy. A felső határ (0.57 m/s) a fizikai kontrollerrel mért csúcssebesség. Újratöltéskor visszaáll 0.50 m/s-ra.</div>
+      </div>
+
       <div class="limit-box" id="angLimitBox">
         <div class="slider-row">
           <label for="angLimit">forgási sebesség</label>
           <div class="range-wrap">
-            <input type="range" id="angLimit" min="0.1" max="1.0" step="0.05" value="0.3">
+            <input type="range" id="angLimit" min="0.1" max="0.98" step="0.05" value="0.5">
             <span class="warn-mark" id="angWarnMark" title="Ez fölött a térképezés szétcsúszhat"></span>
           </div>
-          <span class="val" id="angLimitV" style="width:84px;">0.30 rad/s</span>
+          <span class="val" id="angLimitV" style="width:84px;">0.50 rad/s</span>
         </div>
-        <div class="limit-note">Csak a webes forgatógombokra vonatkozik; a fizikai távirányítót NEM korlátozza. Újratöltéskor visszaáll 0.30 rad/s-ra.</div>
+        <div class="limit-note">Csak a webes forgatógombokra vonatkozik; a fizikai távirányítót NEM korlátozza. A felső határ (0.98 rad/s) a fizikai kontrollerrel mért csúcs-szögsebesség. Újratöltéskor visszaáll 0.50 rad/s-ra.</div>
         <div class="limit-warn" id="angLimitWarn">⚠ A piros vonal fölött (0.60 rad/s) a LiDAR-szkennelés torzul, és a 2D térképezés szétcsúszhat. A határ becslés, nem mért érték.</div>
       </div>
 
@@ -194,13 +219,13 @@
         <span class="dpad-empty"></span>
       </div>
       <div class="limit-note" style="margin-top:-0.6rem; margin-bottom:0.6rem;">
-        Az oldalazás (A/D) még nincs élő roboton kipróbálva. Átlós mozgás egyelőre nincs a felületen — a kontrolleren sem elérhető, ezt később tárgyaljuk.
+        Az oldalazás (A/D) korábbi "donut"-hibája (0 forgásparancs mellett is forgott a robot) 2026-09-23-án megoldva — a kerekek X-mintában vannak, élő roboton is ellenőrizve. Átlós mozgás egyelőre nincs a felületen — a kontrolleren sem elérhető, ezt később tárgyaljuk.
       </div>
       <button class="stop-btn" id="estopBtn">WEBES MEGÁLLÍTÁS — LEÉLESÍTÉS</button>
 
       <div class="readout" id="baseReadout">
         linear.x: <b>0.000</b> m/s · linear.y: <b>0.000</b> m/s · angular.z: <b>0.000</b> rad/s<br>
-        sebességplafon (NEM mért hardver-érték, óvatos alapbeállítás): ±0.15 m/s lineáris, ±0.30 rad/s szögsebesség
+        sebességplafon (a felső határ mért kontroller-csúcs, az induló érték óvatos): ±0.50 m/s előre-hátra, ±0.50 m/s oldalazás, ±0.50 rad/s szögsebesség
       </div>
     </div>
   </div>
@@ -287,19 +312,33 @@ function log(cls, text) {
 }
 
 // ================= BÁZIS (mecanum) VEZÉRLÉS =================
-// Ugyanazok az óvatos, NEM mért plafonok, mint a xavier_control/base_drive.py-ban —
-// ha ott változik a szám, itt is frissítsd, hogy a két oldal ne térjen el egymástól.
-const MAX_LINEAR_MPS = 0.15;
+// A csúszkák felső határa a fizikai kontrollerrel 2026-09-23-án mért csúcsérték (telemetria,
+// /odom alapján): ±0.55 m/s előre-hátra, ±0.57 m/s oldalazás, ±0.98 rad/s forgás. A webes
+// vezérlés emiatt nem lehet gyorsabb, mint amit a kontrollerrel is meg lehet mutatni.
+// Az alapértelmezett (induláskori) értékek továbbra is óvatosak, NEM ezek a mért csúcsok —
+// a csúszkával kell felhúzni, ha többre van szükség. A DIRS/recomputeTarget lentebb van.
+// Ha ez a szám változik, a xavier_control/base_drive.py-ban lévő megfelelőt is frissítsd.
+const LINEAR_SLIDER_MIN = 0.05;
+const LINEAR_SLIDER_MAX = 0.55;   // mért kontroller-csúcssebesség (2026-09-23)
+let linearLimit = 0.5;            // alapérték a felhasználó kérésére (2026-09-23), a mért csúcs alatt
 // Élő próba (felhasználói jelzés): az "előre" gomb hátrafelé vitte a robotot -> az x előjelét megfordítjuk.
 // Az y (oldalazás) és a forgás előjelét még NEM ellenőriztük; ha azok is fordítottak, itt külön kell állítani.
 const X_SIGN = -1;
-const MAX_ANGULAR_RADPS = 0.3;          // alapérték; a csúszka ezt csak a webes forgatógombokra írja felül
+const MAX_ANGULAR_RADPS = 0.5;          // alapérték a felhasználó kérésére (2026-09-23); a csúszka ezt csak a webes forgatógombokra írja felül
 const ANGULAR_SLIDER_MIN = 0.1;
-const ANGULAR_SLIDER_MAX = 1.0;
+const ANGULAR_SLIDER_MAX = 0.98;  // mért kontroller-csúcs szögsebesség (2026-09-23)
 // Becsült határ, NEM mért érték: 12 Hz-es LiDAR-nál 0.6 rad/s ~ 0.05 rad/szkennelés. A 2026-09-21-i mérésnél
 // 0.5 rad/szkennelés (kb. 6 rad/s) fölötti fordulásnál omlottak össze a gmapping részecskéi (docs/11).
 const ANGULAR_MAP_WARN_RADPS = 0.6;
 let angularLimit = MAX_ANGULAR_RADPS;
+// Oldalazás (A/D) sebességhatára. A korábbi "donut"-hiba (2026-09-23-án megjavítva, ld. docs/11)
+// miatt volt itt átmenetileg fél sebességre korlátozva; azóta a kerekek X-mintában vannak, és
+// élő roboton igazoltuk, hogy tisztán oldalra megy — a határ most már a mért kontroller-csúcs.
+// A csúszka JS-e lentebb van, de az értéket itt kell deklarálni, mert a recomputeTarget()
+// már a lenti csúszka-inicializálás előtt is lefuthat (pl. a forgási csúszka apply()-jából).
+const STRAFE_SLIDER_MIN = 0.03;
+const STRAFE_SLIDER_MAX = 0.57;   // mért kontroller-csúcssebesség (2026-09-23)
+let strafeLimit = 0.5;            // alapérték a felhasználó kérésére (2026-09-23), a mért csúcs alatt
 const MAX_LINEAR_ACCEL_PER_TICK = 0.03;
 const MAX_ANGULAR_ACCEL_PER_TICK = 0.06;
 const TICK_MS = 100; // 10 Hz — jóval ritkább, mint egy valós joystick-loop, de elég egy manuális UI-hoz
@@ -360,7 +399,7 @@ document.getElementById('armBtn').addEventListener('click', () => {
 function updateReadout() {
   document.getElementById('baseReadout').innerHTML =
     `linear.x: <b>${current.x.toFixed(3)}</b> m/s · linear.y: <b>${current.y.toFixed(3)}</b> m/s · angular.z: <b>${current.az.toFixed(3)}</b> rad/s<br>` +
-    `sebességplafon (NEM mért hardver-érték, óvatos alapbeállítás): ±${MAX_LINEAR_MPS.toFixed(2)} m/s lineáris, ±${angularLimit.toFixed(2)} rad/s szögsebesség (forgás, csúszkával)`;
+    `sebességplafon (a felső határ mért kontroller-csúcs, az induló érték óvatos): ±${linearLimit.toFixed(2)} m/s előre-hátra (csúszkával), ±${strafeLimit.toFixed(2)} m/s oldalazás (csúszkával), ±${angularLimit.toFixed(2)} rad/s szögsebesség (forgás, csúszkával)`;
 }
 
 function publishTwist() {
@@ -396,8 +435,8 @@ function recomputeTarget() {
     if (key === 'rotRight') az -= 1;
   }
   target = {
-    x: clamp(x, 1) * MAX_LINEAR_MPS * X_SIGN,
-    y: clamp(y, 1) * MAX_LINEAR_MPS,
+    x: clamp(x, 1) * linearLimit * X_SIGN,
+    y: clamp(y, 1) * strafeLimit,
     az: clamp(az, 1) * angularLimit,
   };
 }
@@ -452,6 +491,39 @@ document.getElementById('estopBtn').addEventListener('click', () => {
     if (over && !wasOver) log('mock', `Figyelem: ${angularLimit.toFixed(2)} rad/s forgás a térképezés szétcsúszását okozhatja`);
     wasOver = over;
     current.az = clamp(current.az, angularLimit);   // csökkentéskor azonnal érvényesül
+    recomputeTarget();
+    updateReadout();
+  }
+  slider.addEventListener('input', apply);
+  apply();
+})();
+
+// ---------- előre-hátra sebesség-csúszka ----------
+(function wireLinearLimit() {
+  const slider = document.getElementById('linLimit');
+  const label = document.getElementById('linLimitV');
+  function apply() {
+    const v = parseFloat(slider.value);
+    linearLimit = Math.max(LINEAR_SLIDER_MIN, Math.min(LINEAR_SLIDER_MAX, isFinite(v) ? v : linearLimit));
+    label.textContent = linearLimit.toFixed(2) + " m/s";
+    current.x = clamp(current.x, linearLimit);   // csökkentéskor azonnal érvényesül
+    recomputeTarget();
+    updateReadout();
+  }
+  slider.addEventListener('input', apply);
+  apply();
+})();
+
+// ---------- oldalazás (A/D) sebesség-csúszka, külön az előre/hátrától ----------
+// A STRAFE_SLIDER_MIN/MAX és strafeLimit a fájl elején van deklarálva (ld. ott a megjegyzést).
+(function wireStrafeLimit() {
+  const slider = document.getElementById('strafeLimit');
+  const label = document.getElementById('strafeLimitV');
+  function apply() {
+    const v = parseFloat(slider.value);
+    strafeLimit = Math.max(STRAFE_SLIDER_MIN, Math.min(STRAFE_SLIDER_MAX, isFinite(v) ? v : strafeLimit));
+    label.textContent = strafeLimit.toFixed(2) + " m/s";
+    current.y = clamp(current.y, strafeLimit);   // csökkentéskor azonnal érvényesül
     recomputeTarget();
     updateReadout();
   }

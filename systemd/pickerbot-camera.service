@@ -1,0 +1,15 @@
+[Unit]
+Description=Pickerbot rear Astra RGB-D camera
+After=pickerbot-bringup.service
+Requires=pickerbot-bringup.service
+
+[Service]
+Type=simple
+User=wheeltec
+Environment=HOME=/home/wheeltec
+ExecStart=/bin/bash -c "source /opt/ros/noetic/setup.bash; source /home/wheeltec/wheeltec_robot/devel/setup.bash; roslaunch turn_on_wheeltec_robot wheeltec_camera.launch"
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

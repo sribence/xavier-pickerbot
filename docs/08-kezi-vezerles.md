@@ -38,6 +38,12 @@
 
 Ha az első élő teszten a robot gyorsabban mozog a vártnál ezekkel az értékekkel, **csökkentsd tovább** ezeket a számokat — ne emeld feljebb egy sikeres teszt után anélkül, hogy tudnád, mi a valós fizikai plafon.
 
+**Fontos, 2026-09-23-i frissítés — a fenti táblázat SZÁNDÉKOSAN elavult marad, ne igazítsd hozzá a webes felületet:** a `base_drive.py` modul (ld. fent a "Mi épült" táblázatot) jelenleg **nincs bekötve** semmilyen valós `/cmd_vel`-publisherbe — csak dict-eket épít, a saját unit tesztjein kívül semmi nem hívja élesben. A fenti `MAX_LINEAR_MPS`/`MAX_ANGULAR_RADPS` értékek tehát ma **nem korlátozzák a robot tényleges mozgását**.
+
+Ezzel szemben `scripts/control_panel.html` a fizikai kontrollerrel 2026-09-23-án, a meglévő telemetria-panellel felügyelten mért valós csúcsértékekre lett kalibrálva: a webes csúszkák felső határa forgásra 0,98 rad/s, oldalazásra 0,57 m/s, előre-hátrára 0,55 m/s — ez ma a ténylegesen élő, kemény korlát a webes vezérlésre (a felhasználó megerősítése szerint a csúszka jobb szélén sem lehet a fizikai kontrollernél gyorsabb parancsot kiküldeni). A csúszkák induló (alapértelmezett) értéke a felhasználó kérésére mindhárom tengelyen 0,5 (0,5 m/s / 0,5 m/s / 0,5 rad/s). Részletek: [11-munkamenet-atadas.md](11-munkamenet-atadas.md).
+
+Ha valaha a `base_drive.py` modult tényleges publisherbe kötik, akkor ott is a fent mért értékekre (vagy azoknál óvatosabbra) kell állítani a konstansokat, és ezt a táblázatot frissíteni kell — addig a két fájl közti eltérés szándékos, nem hiba.
+
 `scripts/xavier_control/arm_control.py` `JOINT_LIMITS_RAD`: **2026-09-18 óta valós adat**, `mini_mec_moveit_four.urdf`-ből olvasva (`j1_joint`/`j2_joint`/`j3_joint`, mindegyik ±0.785 rad). A gripper-érték továbbra sincs kalibrálva — lásd lent az "Élő ellenőrzés" szakaszt.
 
 ## Első élő teszt — lépésről lépésre (amikor a robot legközelebb elérhető)
