@@ -37,6 +37,27 @@
   .demo-pair .panel { min-width:0; min-height:430px; }
   html.embedded header, html.embedded .extra-sensor { display:none; }
   html.embedded .demo-pair { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  /* 2026-09-23: felhasználói kérésre mind a 4 kamera/térkép-csempének EGYSZERRE kell látszania
+     az iframe-en belül, görgetés nélkül. Korábbi hiba: a `height:100%` a képeken/canvasokon
+     nem tudott érvényesülni, mert egyik szülőnek sem volt KONKRÉT (nem auto) magassága — emiatt
+     a böngésző a kép natív méretére (~4:3) esett vissza, és az első sor (C70+térkép) kitöltötte
+     szinte az egész iframe-et, a második sor (RGB+mélység) meg gyakorlatilag láthatatlan lett.
+     Javítás: html/body/.grid 100%-os magasságlánc + flex, hogy a 2 sor pontosan egyenlően
+     ossza el az iframe teljes magasságát, és a képek height:100%-a ténylegesen érvényesüljön. */
+  html.embedded, html.embedded body { height:100%; margin:0; }
+  html.embedded .grid { display:flex; flex-direction:column; height:100%; }
+  html.embedded .demo-pair { flex:1 1 0; min-height:0; display:grid; grid-template-rows:1fr; }
+  html.embedded .demo-pair .panel { min-height:0; }
+  html.embedded .panel-head { padding:0.2rem 0.5rem; font-size:0.62rem; flex:none; }
+  html.embedded .panel-head .pill { font-size:0.58rem; }
+  html.embedded .map-meta { display:none; }
+  html.embedded .panel-body { min-height:0; }
+  html.embedded .panel-body img,
+  html.embedded .panel-body canvas {
+    width:100%; height:100%; max-width:none; max-height:none; object-fit:cover;
+  }
+  html.embedded #mapCanvas { object-fit:contain; image-rendering:pixelated; }
+  html.embedded .stat { font-size:0.6rem; padding:1px 4px; }
   @media (max-width:520px) { html.embedded .demo-pair { grid-template-columns:1fr; } }
   .map-body { background:#10161c; }
   #mapCanvas { max-width:100%; max-height:100%; width:auto; height:auto; image-rendering:pixelated; }
@@ -422,8 +443,15 @@ setInterval(() => {
   if (!EMBEDDED && c70FallbackStarted && lastC70Frame && Date.now() - lastC70Frame > 15000) {
     c70Status.textContent = 'Kamera: a ROS-kép nem frissül (15+ mp)';
   }
-  if (!EMBEDDED && c70FallbackStarted) c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
-}, 8000);
+  if (c70FallbackStarted) {
+    // Beágyazott nézetben (control_panel.html) ez korábban `!EMBEDDED`-hez volt kötve,
+    // ezért ott egyetlen sikertelen próbálkozás után semmi nem próbálkozott újra az
+    // MJPEG-gel — csak a lassabb (8-15 mp-es) snapshot-teszt+újratöltés lánc maradt.
+    // 2026-09-23: minden nézetben újrapróbáljuk, 5 mp-enként.
+    c70Img.hidden = false;
+    c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
+  }
+}, 5000);
 
 // Háttérbe kerülő fülnél (2026-09-22-i felhasználói visszajelzés: sokára és nagy késéssel jött
 // vissza a kamera és a térkép is) két dolog történhet: (1) a böngésző háttérben lelassítja a
@@ -436,8 +464,10 @@ setInterval(() => {
 // kerüléskor pedig azonnal friss (cache nélküli) kapcsolatot nyitunk, és ellenőrizzük a
 // rosbridge-et is ahelyett, hogy a lassú, időzített ellenőrzésekre várnánk.
 document.addEventListener('visibilitychange', () => {
+  const rgbImg = document.getElementById('rgbImg');
   if (document.hidden) {
     c70Img.removeAttribute('src');
+    if (rgbImg) rgbImg.removeAttribute('src');
     return;
   }
   c70MjpegStarted = false;
@@ -445,6 +475,9 @@ document.addEventListener('visibilitychange', () => {
   c70Img.hidden = false;
   c70Canvas.hidden = true;
   c70Img.src = `${c70StreamUrl}&_=${Date.now()}`;
+  // A hátsó RGB kamera ugyanazon a web_video_server MJPEG-alagúton megy, mint a C70 —
+  // ugyanaz a régi-pufferelt-kép jelenség érintené, ha nem nyitnánk hozzá is friss kapcsolatot.
+  if (rgbImg) rgbImg.src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw&_=${Date.now()}`;
   setTimeout(() => {
     if (document.hidden) return;
     if (!c70MjpegStarted && !c70Img.naturalWidth) startC70Fallback();

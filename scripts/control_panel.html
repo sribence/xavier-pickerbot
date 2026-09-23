@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <title>Pickerbot Mini — bemutató</title>
 <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <style>
   :root{
     --bg:#0f1216; --surface:#171b21; --card:#1b2129; --border:#2a313c;
@@ -11,42 +13,26 @@
     --accent:#5fc3d6; --warm:#e0a05c; --good:#6bc98a; --bad:#e06a6a;
   }
   * { box-sizing: border-box; }
+  /* A `hidden` attribút mindig nyerjen, akármilyen más (pl. `display:block`) szabály van
+     lejjebb a lapon — enélkül egy üres canvas/img "hidden"-nel is helyet foglalt a flex
+     elrendezésben, és összenyomta mellette a többi elemet (2026-09-24, hibajavítás). */
+  [hidden] { display:none !important; }
+  html, body { height:100%; margin:0; }
   body {
-    margin:0; background:var(--bg); color:var(--text);
+    background:var(--bg); color:var(--text);
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
   }
   header {
-    display:flex; align-items:center; gap:1rem; padding:0.8rem 1.2rem;
-    border-bottom:1px solid var(--border); background:var(--surface); flex-wrap:wrap;
+    display:flex; align-items:center; gap:0.8rem; padding:0.3rem 0.8rem;
+    border-bottom:1px solid var(--border); background:var(--surface); flex-wrap:wrap; flex:none;
   }
-  header h1 { font-size:1.05rem; margin:0; font-weight:600; }
-  header a { color:var(--accent); font-size:0.85rem; text-decoration:none; }
-  #globalStatus { font-size:0.85rem; padding:0.25rem 0.6rem; border-radius:99px; border:1px solid var(--border); }
+  header h1 { font-size:0.85rem; margin:0; font-weight:600; }
+  header a { color:var(--accent); font-size:0.72rem; text-decoration:none; }
+  #globalStatus { font-size:0.72rem; padding:0.15rem 0.5rem; border-radius:99px; border:1px solid var(--border); }
   #globalStatus.ok { color:var(--good); border-color:var(--good); }
   #globalStatus.err { color:var(--bad); border-color:var(--bad); }
 
-  .banner {
-    padding:0.65rem 1.2rem; font-size:0.85rem; line-height:1.45; background:#241a10; color:var(--warm);
-    border-bottom:1px solid var(--border);
-  }
-
-  .grid {
-    display:grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
-    gap:1px; background:var(--border);
-  }
-  .panel { background:var(--card); display:flex; flex-direction:column; min-height:300px; min-width:0; }
-  .sensor-panel { grid-column:1; grid-row:1; }
-  .base-panel { grid-column:2; grid-row:1; }
-  .log-panel { grid-column:1; grid-row:2; }
-  .arm-panel { grid-column:2; grid-row:2; }
-  @media (max-width:850px) {
-    .grid { grid-template-columns:1fr; }
-    .sensor-panel { grid-column:1; grid-row:1; }
-    .base-panel { grid-column:1; grid-row:2; }
-    .arm-panel { grid-column:1; grid-row:3; }
-    .log-panel { grid-column:1; grid-row:4; }
-  }
+  .panel { background:var(--card); display:flex; flex-direction:column; min-width:0; min-height:0; }
   .panel-head {
     display:flex; justify-content:space-between; align-items:center; gap:0.6rem;
     padding:0.5rem 0.8rem; border-bottom:1px solid var(--border);
@@ -55,21 +41,151 @@
   .panel-head .tag { font-size:0.66rem; padding:2px 8px; border-radius:99px; text-transform:none; letter-spacing:0; }
   .tag.live { color:var(--good); border:1px solid var(--good); }
   .tag.sim { color:var(--warm); border:1px solid var(--warm); }
-  .panel-body { flex:1; padding:1rem; }
+  .panel-body { flex:1; min-height:0; padding:1rem; }
 
-  .arm-toggle {
-    display:flex; align-items:center; gap:0.6rem; padding:0.8rem;
-    border:1px solid var(--border); border-radius:8px; background:var(--surface);
-    margin-bottom:1rem;
+  /* ================= FŐ SZÍNPAD: 3 oszlop — kis szenzorképek | nagy fókuszkép | oldalsáv =================
+     2026-09-23, a felhasználó kézzel rajzolt vázlata + pontosítása alapján:
+     - bal oszlop: MINDEN szenzorkép kicsiben, egymás alatt, görgethető sávban (úgy méretezve, hogy kb.
+       3,5 kép férjen el egyszerre — jelezve, hogy lehet görgetni); alatta a parancsnapló, rögzítve,
+       görgetés nélkül mindig látszik (bal alsó sarok).
+     - középső oszlop: 1 nagy, fókuszban lévő kép (alapból C70), amit a bal oldali kis képre kattintva
+       lehet cserélni.
+     - jobb oszlop (oldalsáv): felül a telemetria + szabályzó csúszkák látszik alapból görgetés nélkül,
+       alattuk (görgetve érhető el) a kerekek kézi gombjai és a kar+gripper vezérlés; legalul, rögzítve,
+       görgetés nélkül mindig látszik az ÉLESÍTÉS gomb.
+     A kis és a nagy nézet UGYANAHHOZ a forráshoz (MJPEG url / ROS-topic feliratkozás) tartozik, de
+     KÜLÖN DOM-elemek (kis kép/canvas + nagy kép/canvas) — a JS mindkettőt frissíti egyszerre, hogy a
+     kis és a nagy kép is mindig élő legyen. */
+  .stage { flex:1; min-height:0; display:flex; gap:1px; background:var(--border); }
+
+  /* ---- bal oszlop: kis szenzorképek + napló ---- */
+  .thumb-col { flex:0 0 190px; min-width:0; display:flex; flex-direction:column; gap:1px; background:var(--border); }
+  .thumb-strip { flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:2px; background:var(--border); }
+  .thumb-tile { flex:0 0 28.6%; min-height:56px; position:relative; cursor:pointer; background:#10161c; }
+  .thumb-tile.active { outline:2px solid var(--accent); outline-offset:-2px; }
+  .thumb-tile .thumb-label {
+    position:absolute; top:3px; left:5px; z-index:2; font-size:0.58rem; color:var(--text);
+    background:rgba(15,18,22,0.75); padding:1px 5px; border-radius:3px; pointer-events:none;
   }
-  .arm-toggle button {
-    font-family:inherit; font-size:0.85rem; padding:0.5rem 1.1rem; border-radius:6px;
-    border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer;
+  .thumb-tile img, .thumb-tile canvas { width:100%; height:100%; object-fit:cover; display:block; }
+  #mapCanvasThumb { object-fit:contain !important; image-rendering:pixelated; }
+  /* a nagyban látott szenzor kisképe NEM kér párhuzamosan adatot a robottól — helyette egy
+     helyettesítő szöveg jelzi, hogy az a kép épp nagyban látható (2026-09-24, felhasználói kérés). */
+  .thumb-tile .thumb-active-note { display:none; }
+  .thumb-tile.active img, .thumb-tile.active canvas { visibility:hidden; }
+  .thumb-tile.active .thumb-active-note {
+    display:flex; position:absolute; inset:0; align-items:center; justify-content:center;
+    text-align:center; padding:0.4rem; font-size:0.6rem; color:var(--faint); z-index:1;
   }
-  .arm-toggle button.armed { background:var(--bad); color:#1a0e0e; border-color:var(--bad); font-weight:700; }
-  .arm-toggle button:disabled { opacity:0.5; cursor:not-allowed; }
-  .arm-toggle .state { font-size:0.78rem; color:var(--muted); }
-  .arm-toggle .state.armed-label { color:var(--bad); font-weight:700; }
+
+  /* a napló elnevezését elhagytuk (egyértelmű, mire való), a felszabaduló hely a naplóé lett,
+     és a sáv is nagyobb (2026-09-24, felhasználói kérés) */
+  .log-wrap { flex:0 0 170px; }
+  .log { flex:1; min-height:0; background:#0b0d10; padding:0.5rem 0.6rem; font-size:0.68rem; color:var(--faint); overflow-y:auto; white-space:pre-wrap; }
+  .log .sent { color:var(--good); }
+  .log .mock { color:var(--muted); }
+  .log .sim { color:var(--warm); }
+
+  /* ---- középső oszlop: nagy fókuszkép ---- */
+  .big-col { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; background:var(--border); }
+  .big-panel { flex:1; min-height:0; }
+  .big-panel .panel-body { padding:0; position:relative; overflow:hidden; }
+  /* az infósáv (#bigHead) a nagy kép ALJÁN van (2026-09-24, felhasználói kérés) — felül nincs
+     mit elválasztania (a fejléctől a stage kezdődik), ezért a border a tetejére kerül. */
+  .big-panel #bigHead { border-bottom:none; border-top:1px solid var(--border); }
+  .big-sensor {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:#10161c;
+  }
+  .big-sensor img, .big-sensor canvas { width:100%; height:100%; object-fit:cover; display:block; }
+  #mapCanvas, #lidarCanvas, #lidarCanvasThumb { object-fit:contain !important; image-rendering:pixelated; }
+  .big-sensor .stat {
+    position:absolute; bottom:6px; left:8px; font-size:0.7rem; color:var(--accent);
+    background:rgba(15,18,22,0.75); padding:2px 7px; border-radius:4px;
+  }
+  .big-sensor .hint {
+    position:absolute; bottom:6px; right:8px; font-size:0.66rem; color:var(--faint);
+    background:rgba(15,18,22,0.75); padding:2px 6px; border-radius:4px;
+  }
+  .map-placeholder { max-width:90%; padding:0.6rem; color:var(--muted); font-size:0.72rem; line-height:1.4; text-align:center; }
+  .pc3d-slot { width:100%; height:100%; }
+  .legend { display:flex; gap:0.7rem; font-size:0.64rem; color:var(--muted); }
+  .legend span.dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; }
+  .map-meta { padding:0.25rem 0.6rem; color:var(--muted); font-size:0.66rem; border-top:1px solid var(--border); flex:none; display:none; }
+  #bigHead[data-sensor="tileMap"] ~ .map-meta { display:block; }
+  .map-reset {
+    border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--text);
+    padding:0.15rem 0.4rem; font:inherit; font-size:0.7rem; letter-spacing:0; text-transform:none; cursor:pointer;
+  }
+  .map-reset:hover, .map-reset:focus-visible { border-color:var(--accent); }
+  .map-reset:disabled { opacity:0.5; cursor:wait; }
+
+  .toggle { display:inline-flex; align-items:center; gap:0.3rem; cursor:pointer; user-select:none; }
+  .toggle input { display:none; }
+  .toggle .sw {
+    width:22px; height:13px; border-radius:99px; background:var(--border);
+    position:relative; transition:background .15s ease; flex:none;
+  }
+  .toggle .sw::after {
+    content:""; position:absolute; top:2px; left:2px; width:9px; height:9px;
+    border-radius:50%; background:var(--faint); transition:transform .15s ease, background .15s ease;
+  }
+  .toggle input:checked + .sw { background:rgba(95,195,214,0.25); }
+  .toggle input:checked + .sw::after { transform:translateX(9px); background:var(--accent); }
+  .toggle.pending .sw::after { background:var(--warm); }
+
+  /* csak az aktív nagy-nézethez tartozó vezérlő (térkép-reset / RGB-kapcsoló / mélység-kapcsoló / 3D jelmagyarázat) látszik */
+  #resetMapBtn, #toggleColorWrap, #toggleDepthWrap, #pc3dLegend { display:none; }
+  #bigHead[data-sensor="tileMap"] #resetMapBtn { display:inline-block; }
+  #bigHead[data-sensor="tileRgb"] #toggleColorWrap { display:inline-flex; }
+  #bigHead[data-sensor="tileDepth"] #toggleDepthWrap { display:inline-flex; }
+  #bigHead[data-sensor="tilePc3d"] #pc3dLegend { display:flex; }
+
+  /* ---- jobb oszlop: oldalsáv (görgethető) + rögzített ÉLESÍTÉS lábléc ---- */
+  .side-col { flex:0 0 260px; min-width:0; display:flex; flex-direction:column; background:var(--border); }
+  /* side-fixed: telemetria + szabályzó csúszkák — alapból mindig látszik, görgetés nélkül.
+     side-scroll: kerekek kézi gombjai + kar/gripper — csak ide kell görgetni, a görgethető
+     terület nem "eszi meg" a fennmaradó helyet, hanem a tartalma alapján méreteződik, hogy a
+     side-fixed rész sose szoruljon ki görgetéssel. */
+  .side-fixed { flex:0 0 auto; display:flex; flex-direction:column; gap:1px; background:var(--border); }
+  .side-scroll { flex:1 1 auto; min-height:40px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; background:var(--border); }
+  .side-fixed .panel-body, .side-scroll .panel-body { padding:0.5rem 0.6rem; }
+  .side-fixed .panel-head, .side-scroll .panel-head { padding:0.35rem 0.6rem; font-size:0.68rem; flex:none; }
+  .side-fixed .telemetry, .side-scroll .telemetry { display:flex; flex-direction:column; gap:0.35rem; margin-bottom:0; }
+  .side-fixed .tele, .side-scroll .tele { padding:0.3rem 0.5rem; }
+  .side-fixed .tele .k, .side-scroll .tele .k { font-size:0.58rem; }
+  .side-fixed .tele .v, .side-scroll .tele .v { font-size:0.78rem; margin-top:0.05rem; }
+  .side-fixed .tele .s, .side-scroll .tele .s { font-size:0.58rem; }
+  .side-fixed .limit-box, .side-scroll .limit-box { padding:0.4rem 0.5rem; margin-bottom:0.5rem; }
+  .side-fixed .slider-row, .side-scroll .slider-row { gap:0.4rem; margin-bottom:0.1rem; justify-content:space-between; }
+  .side-fixed .slider-row label, .side-scroll .slider-row label { width:auto; font-size:0.66rem; }
+  .side-fixed .slider-row .val, .side-scroll .slider-row .val { width:auto; font-size:0.66rem; }
+  .side-fixed .limit-note, .side-scroll .limit-note, .side-fixed .limit-warn, .side-scroll .limit-warn { font-size:0.58rem; line-height:1.3; }
+
+  .side-footer {
+    flex:0 0 auto; display:flex; flex-direction:column; align-items:stretch; gap:0.3rem;
+    padding:0.5rem 0.6rem; background:var(--card); border-top:1px solid var(--border);
+  }
+  .side-footer button {
+    font-family:inherit; font-size:0.8rem; padding:0.5rem 0.7rem; border-radius:6px;
+    border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; font-weight:600;
+  }
+  .side-footer button.armed { background:var(--bad); color:#1a0e0e; border-color:var(--bad); }
+  .side-footer button:disabled { opacity:0.5; cursor:not-allowed; }
+  .side-footer .state { font-size:0.66rem; color:var(--muted); }
+  .side-footer .state.armed-label { color:var(--bad); font-weight:700; }
+
+  @media (max-width:760px) {
+    .stage { flex-direction:column; }
+    .thumb-col { flex:0 0 150px; flex-direction:row; }
+    .thumb-strip { flex-direction:row; overflow-y:hidden; overflow-x:auto; }
+    .thumb-tile { flex:0 0 28.6%; min-height:0; }
+    .log-wrap { flex:0 0 90px; }
+    .big-col { flex:0 0 46vh; }
+    .side-col { flex:0 0 auto; }
+    .side-scroll { flex-direction:row; flex-wrap:wrap; max-height:38vh; }
+    .side-scroll > .panel { flex:1 1 260px; }
+  }
 
   .dpad { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:6px; justify-content:center; margin:1rem 0; }
   .dpad.dpad-cross button { font-size:0.72rem; }
@@ -115,14 +231,6 @@
   }
   .gripper-row button:hover { border-color:var(--accent); color:var(--accent); }
 
-  .log {
-    background:#0b0d10; border:1px solid var(--border); border-radius:6px; padding:0.6rem;
-    font-size:0.7rem; color:var(--faint); height:160px; overflow-y:auto; white-space:pre-wrap;
-  }
-  .log .sent { color:var(--good); }
-  .log .mock { color:var(--muted); }
-  .log .sim { color:var(--warm); }
-
   .telemetry { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0.6rem; margin-bottom:0.8rem; }
   .tele { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:0.5rem 0.7rem; min-width:0; }
   .tele .k { font-size:0.68rem; color:var(--muted); letter-spacing:0.03em; text-transform:uppercase; }
@@ -132,167 +240,260 @@
   .tele.warn .v { color:var(--warm); }
   .tele.bad .v { color:var(--bad); }
   .tele.stale .v { color:var(--faint); }
-
-  /* 2026-09-23: a beágyazott nézet a C70+térkép sor alatt most már a hátsó RGB+mélység
-     kamera sorát is mutatja, ezért az iframe majdnem kétszer olyan magas kell legyen.
-     A pontos méret még hangolásra vár (ld. napló, "kompaktálás" lépés). */
-  .camera-embed { border:0; width:100%; height:920px; background:var(--bg); }
-  .embed-note { font-size:0.72rem; color:var(--faint); padding:0.4rem 0.8rem; }
-  @media (max-width:520px) { .camera-embed { height:1700px; } }
 </style>
 </head>
 <body>
 
+<div class="above-fold" style="height:100%; display:flex; flex-direction:column;">
 <header>
   <h1>Pickerbot Mini — élő bemutató</h1>
   <span id="globalStatus">csatlakozás...</span>
-  <a href="dashboard.html" target="_blank">↗ műszaki szenzornézet</a>
+  <a href="../docs/08-kezi-vezerles.md" target="_blank" title="Kar = csak szimuláció. Vészhelyzetben a fizikai leállítót használd.">⚠ részletek</a>
 </header>
 
-<div class="banner">
-  ⚠️ A kerekek csak ÉLESÍTÉS után mozoghatnak; a gombot tartsd nyomva, az elengedése megállást kér.
-  A kar gombjai csak szimulációk. Vészhelyzetben a fizikai leállítót használd: a webes megállítás hálózatfüggő.
-  <a href="../docs/08-kezi-vezerles.md" style="color:var(--warm);">Kezelési és biztonsági leírás</a>.
-</div>
+<div class="stage">
 
-<div class="grid">
-
-  <div class="panel base-panel">
-    <div class="panel-head">
-      <span>Bázis (mecanum) vezérlés</span>
-      <span class="tag live">ÉLESÍTÉS után aktív</span>
-    </div>
-    <div class="panel-body">
-      <div class="arm-toggle">
-        <button id="armBtn" disabled>ÉLESÍTÉS</button>
-        <span class="state" id="armState">nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra</span>
+  <div class="thumb-col">
+    <div class="thumb-strip">
+      <div class="panel thumb-tile active" data-target="tileC70">
+        <span class="thumb-label">C70</span>
+        <span class="thumb-active-note">nagyban látható</span>
+        <img id="c70ImgThumb" alt="A kar C70 kamerájának kisképe">
+        <canvas id="c70CanvasThumb" hidden></canvas>
       </div>
-
-      <div class="limit-box" id="linLimitBox">
-        <div class="slider-row">
-          <label for="linLimit">előre-hátra sebesség</label>
-          <div class="range-wrap">
-            <input type="range" id="linLimit" min="0.05" max="0.55" step="0.01" value="0.5">
-          </div>
-          <span class="val" id="linLimitV" style="width:84px;">0.50 m/s</span>
-        </div>
-        <div class="limit-note">Csak a W/S (előre/hátra) gombokra vonatkozik. A felső határ (0.55 m/s) a fizikai kontrollerrel 2026-09-23-án mért csúcssebesség (telemetria alapján), tehát a webes vezérlés ennél gyorsabb nem lehet, mint amit a kontrollerrel is meg tudsz mutatni. Újratöltéskor visszaáll 0.50 m/s-ra.</div>
+      <div class="panel thumb-tile" data-target="tileMap">
+        <span class="thumb-label">Térkép</span>
+        <span class="thumb-active-note">nagyban látható</span>
+        <canvas id="mapCanvasThumb" hidden></canvas>
       </div>
-
-      <div class="limit-box" id="strafeLimitBox">
-        <div class="slider-row">
-          <label for="strafeLimit">oldalazás sebessége</label>
-          <div class="range-wrap">
-            <input type="range" id="strafeLimit" min="0.03" max="0.57" step="0.01" value="0.5">
-          </div>
-          <span class="val" id="strafeLimitV" style="width:84px;">0.50 m/s</span>
-        </div>
-        <div class="limit-note">Csak az A/D (oldalazás) gombokra vonatkozik. A korábbi "donut"-hiba (0 forgásparancs mellett is forgott a robot) megoldva: a kerekek nem voltak X-mintában szerelve, ezt 2026-09-23-án megjavítottuk (ld. napló) és élő roboton is ellenőriztük — az oldalazás most tisztán oldalra megy. A felső határ (0.57 m/s) a fizikai kontrollerrel mért csúcssebesség. Újratöltéskor visszaáll 0.50 m/s-ra.</div>
+      <div class="panel thumb-tile" data-target="tileRgb">
+        <span class="thumb-label">Hátsó RGB</span>
+        <span class="thumb-active-note">nagyban látható</span>
+        <img id="rgbImgThumb" alt="Hátsó RGB kamera kisképe">
       </div>
-
-      <div class="limit-box" id="angLimitBox">
-        <div class="slider-row">
-          <label for="angLimit">forgási sebesség</label>
-          <div class="range-wrap">
-            <input type="range" id="angLimit" min="0.1" max="0.98" step="0.05" value="0.5">
-            <span class="warn-mark" id="angWarnMark" title="Ez fölött a térképezés szétcsúszhat"></span>
-          </div>
-          <span class="val" id="angLimitV" style="width:84px;">0.50 rad/s</span>
-        </div>
-        <div class="limit-note">Csak a webes forgatógombokra vonatkozik; a fizikai távirányítót NEM korlátozza. A felső határ (0.98 rad/s) a fizikai kontrollerrel mért csúcs-szögsebesség. Újratöltéskor visszaáll 0.50 rad/s-ra.</div>
-        <div class="limit-warn" id="angLimitWarn">⚠ A piros vonal fölött (0.60 rad/s) a LiDAR-szkennelés torzul, és a 2D térképezés szétcsúszhat. A határ becslés, nem mért érték.</div>
+      <div class="panel thumb-tile" data-target="tileDepth">
+        <span class="thumb-label">Mélység</span>
+        <span class="thumb-active-note">nagyban látható</span>
+        <canvas id="depthCanvasThumb" hidden></canvas>
       </div>
-
-      <div class="rot-row">
-        <button id="rotLeft" title="forgás balra (angular.z +)">⟲ balra</button>
-        <button id="rotRight" title="forgás jobbra (angular.z -)">⟳ jobbra</button>
+      <div class="panel thumb-tile" data-target="tileLidar">
+        <span class="thumb-label">LiDAR</span>
+        <span class="thumb-active-note">nagyban látható</span>
+        <canvas id="lidarCanvasThumb" width="200" height="200" hidden></canvas>
       </div>
-      <div class="dpad dpad-cross">
-        <span class="dpad-empty"></span>
-        <button id="w" title="előre">↑ előre</button>
-        <span class="dpad-empty"></span>
-        <button id="a" title="oldalra balra, fordulás nélkül (mecanum strafe)">← oldalra</button>
-        <button id="stopMid" title="azonnali megállás">■</button>
-        <button id="d" title="oldalra jobbra, fordulás nélkül (mecanum strafe)">oldalra →</button>
-        <span class="dpad-empty"></span>
-        <button id="s" title="hátra">↓ hátra</button>
-        <span class="dpad-empty"></span>
-      </div>
-      <div class="limit-note" style="margin-top:-0.6rem; margin-bottom:0.6rem;">
-        Az oldalazás (A/D) korábbi "donut"-hibája (0 forgásparancs mellett is forgott a robot) 2026-09-23-án megoldva — a kerekek X-mintában vannak, élő roboton is ellenőrizve. Átlós mozgás egyelőre nincs a felületen — a kontrolleren sem elérhető, ezt később tárgyaljuk.
-      </div>
-      <button class="stop-btn" id="estopBtn">WEBES MEGÁLLÍTÁS — LEÉLESÍTÉS</button>
-
-      <div class="readout" id="baseReadout">
-        linear.x: <b>0.000</b> m/s · linear.y: <b>0.000</b> m/s · angular.z: <b>0.000</b> rad/s<br>
-        sebességplafon (a felső határ mért kontroller-csúcs, az induló érték óvatos): ±0.50 m/s előre-hátra, ±0.50 m/s oldalazás, ±0.50 rad/s szögsebesség
+      <div class="panel thumb-tile" data-target="tilePc3d">
+        <span class="thumb-label">3D felhő</span>
+        <span class="thumb-active-note">nagyban látható</span>
+        <div class="pc3d-slot" id="pc3dThumbSlot"></div>
       </div>
     </div>
-  </div>
 
-  <div class="panel arm-panel">
-    <div class="panel-head">
-      <span>Kar + gripper vezérlés</span>
-      <span class="tag sim">SZIMULÁCIÓ — valós kar-vezérlés még nincs</span>
-    </div>
-    <div class="panel-body">
-      <div class="readout" style="margin-top:0; margin-bottom:1rem; color:var(--warm);">
-        A 3 csúszka és a gripper-gombok csak a naplóba írnak. Nincs bekötve semmilyen valós
-        ROS-parancs. A <code>/arm_cmd</code> és a j1/j2/j3 ±45° határa ismert, de a gripper
-        konvenciója és a kar biztonságos mozgása még nincs kalibrálva (lásd docs/08-kezi-vezerles.md).
-      </div>
-
-      <div class="slider-row"><label>j1_joint</label><input type="range" id="j0" min="-45" max="45" value="0"><span class="val" id="j0v">0°</span></div>
-      <div class="slider-row"><label>j2_joint</label><input type="range" id="j1" min="-45" max="45" value="0"><span class="val" id="j1v">0°</span></div>
-      <div class="slider-row"><label>j3_joint</label><input type="range" id="j2" min="-45" max="45" value="0"><span class="val" id="j2v">0°</span></div>
-
-      <div class="gripper-row">
-        <button id="gripOpen">Gripper: NYIT</button>
-        <button id="gripClose">Gripper: ZÁR</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel sensor-panel">
-    <div class="panel-head"><span>C70 kamera és élő 2D térkép</span><span class="tag live">szenzornézet</span></div>
-    <iframe class="camera-embed" src="dashboard.html?embed=1" title="C70 kamera és SLAM-térkép"></iframe>
-    <div class="embed-note">A teljes Astra-, LiDAR- és 3D nézet a felső „műszaki szenzornézet” linken nyitható meg.</div>
-  </div>
-
-  <div class="panel log-panel">
-    <div class="panel-head"><span>Telemetria és parancsnapló</span><span class="tag live">csak olvasás</span></div>
-    <div class="panel-body">
-      <div class="telemetry">
-        <div class="tele stale" id="teBattery"><div class="k">Akku (/PowerVoltage)</div><div class="v">—</div><div class="s">nincs adat</div></div>
-        <div class="tele stale" id="teSpeed"><div class="k">Tényleges sebesség (/odom)</div><div class="v">—</div><div class="s">nincs adat</div></div>
-        <div class="tele stale" id="teTurn"><div class="k">Forgás (/odom, /imu)</div><div class="v">—</div><div class="s">nincs adat</div></div>
-      </div>
+    <div class="panel log-wrap">
       <div class="log" id="logBox"></div>
     </div>
   </div>
 
+  <div class="big-col">
+    <div class="panel big-panel">
+      <div class="panel-body" id="bigBody">
+        <div class="big-sensor" id="bigC70">
+          <img id="c70Img" alt="A kar C70 kamerájának képe">
+          <canvas id="c70Canvas" width="640" height="480" aria-label="A kar C70 kamerájának képe" hidden></canvas>
+          <span class="stat" id="c70Status" role="status">Kamera: kapcsolódás...</span>
+        </div>
+        <div class="big-sensor" id="bigMap" hidden>
+          <canvas id="mapCanvas" aria-label="A 2D LiDAR által épített foglaltsági térkép" hidden></canvas>
+          <span id="mapPlaceholder" class="map-placeholder">Várakozás a /map adatra.</span>
+        </div>
+        <div class="big-sensor" id="bigRgb" hidden>
+          <img id="rgbImg" alt="Hátsó RGB kamera (Astra) képe">
+        </div>
+        <div class="big-sensor" id="bigDepth" hidden>
+          <canvas id="depthCanvas" width="640" height="480"></canvas>
+          <span class="stat" id="depthStat">-</span>
+        </div>
+        <div class="big-sensor" id="bigLidar" hidden>
+          <canvas id="lidarCanvas" width="500" height="500" aria-label="A LiDAR 2D felülnézete"></canvas>
+          <span class="stat" id="lidarStat">-</span>
+        </div>
+        <div class="big-sensor" id="bigPc3d" hidden>
+          <div class="pc3d-slot" id="pc3dBigSlot"></div>
+          <span class="stat" id="pcStat">-</span>
+          <span class="hint">bal gomb + húzás: forgatás · görgő: zoom · jobb gomb + húzás: eltolás</span>
+        </div>
+      </div>
+      <!-- Az infósáv (kép neve + topic + vezérlők) a nagy kép ALJÁRA került, nem a tetejére
+           (2026-09-24, felhasználói kérés). -->
+      <div class="panel-head" id="bigHead" data-sensor="tileC70">
+        <span id="bigLabel">C70 kamera</span>
+        <span class="pill" id="bigPill">/usb_cam/image_raw</span>
+        <button class="map-reset" id="resetMapBtn" type="button" title="A SLAM belső térképét törli, majd újra kezdi az építést">↺ újra</button>
+        <label class="toggle" id="toggleColorWrap" title="RGB stream be/ki">
+          <input type="checkbox" id="toggleColor" checked><span class="sw"></span>
+        </label>
+        <label class="toggle" id="toggleDepthWrap" title="Mélységkamera stream be/ki">
+          <input type="checkbox" id="toggleDepth" checked><span class="sw"></span>
+        </label>
+        <span class="legend" id="pc3dLegend">
+          <span><span class="dot" style="background:#5fc3d6"></span>depth</span>
+          <span><span class="dot" style="background:#e0a05c"></span>lidar</span>
+        </span>
+      </div>
+      <div class="map-meta" id="mapStatus" role="status">Térkép: várakozás</div>
+    </div>
+  </div>
+
+  <div class="side-col">
+    <div class="side-fixed">
+      <div class="panel">
+        <div class="panel-body">
+          <div class="telemetry">
+            <div class="tele stale" id="teBattery"><div class="k">Akku</div><div class="v">—</div><div class="s">nincs adat</div></div>
+            <div class="tele stale" id="teSpeed"><div class="k">Sebesség (/odom)</div><div class="v">—</div><div class="s">nincs adat</div></div>
+            <div class="tele stale" id="teTurn"><div class="k">Forgás (/odom, /imu)</div><div class="v">—</div><div class="s">nincs adat</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-body">
+          <div class="limit-box" id="linLimitBox">
+            <div class="slider-row">
+              <label for="linLimit">előre-hátra</label>
+              <span class="val" id="linLimitV">0.50 m/s</span>
+            </div>
+            <div class="range-wrap">
+              <input type="range" id="linLimit" min="0.05" max="0.55" step="0.01" value="0.5">
+            </div>
+            <div class="limit-note">Csak W/S. Max 0.55 m/s.</div>
+          </div>
+
+          <div class="limit-box" id="strafeLimitBox">
+            <div class="slider-row">
+              <label for="strafeLimit">oldalazás</label>
+              <span class="val" id="strafeLimitV">0.50 m/s</span>
+            </div>
+            <div class="range-wrap">
+              <input type="range" id="strafeLimit" min="0.03" max="0.57" step="0.01" value="0.5">
+            </div>
+            <div class="limit-note">Csak A/D. Max 0.57 m/s.</div>
+          </div>
+
+          <div class="limit-box" id="angLimitBox">
+            <div class="slider-row">
+              <label for="angLimit">forgás</label>
+              <span class="val" id="angLimitV">0.50 rad/s</span>
+            </div>
+            <div class="range-wrap">
+              <input type="range" id="angLimit" min="0.1" max="0.98" step="0.05" value="0.5">
+              <span class="warn-mark" id="angWarnMark" title="Ez fölött a térképezés szétcsúszhat"></span>
+            </div>
+            <div class="limit-note">Csak webes forgatógombok. Max 0.98 rad/s.</div>
+            <div class="limit-warn" id="angLimitWarn">⚠ 0.60 rad/s fölött a térkép torzulhat.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-scroll">
+      <div class="panel controls-panel">
+        <div class="panel-head"><span>Kerekek — kézi gombok</span><span class="tag live">a billentyűzet ugyanezt csinálja</span></div>
+        <div class="panel-body">
+          <div class="rot-row">
+            <button id="rotLeft" title="forgás balra (angular.z +)">⟲ balra</button>
+            <button id="rotRight" title="forgás jobbra (angular.z -)">⟳ jobbra</button>
+          </div>
+          <div class="dpad dpad-cross">
+            <span class="dpad-empty"></span>
+            <button id="w" title="előre">↑ előre</button>
+            <span class="dpad-empty"></span>
+            <button id="a" title="oldalra balra, fordulás nélkül (mecanum strafe)">← oldalra</button>
+            <button id="stopMid" title="azonnali megállás">■</button>
+            <button id="d" title="oldalra jobbra, fordulás nélkül (mecanum strafe)">oldalra →</button>
+            <span class="dpad-empty"></span>
+            <button id="s" title="hátra">↓ hátra</button>
+            <span class="dpad-empty"></span>
+          </div>
+          <div class="limit-note" style="margin-top:-0.6rem; margin-bottom:0.6rem;">Átlós mozgás nincs (a kontrolleren sem).</div>
+          <button class="stop-btn" id="estopBtn">WEBES MEGÁLLÍTÁS — LEÉLESÍTÉS</button>
+
+          <div class="readout" id="baseReadout">
+            linear.x: <b>0.000</b> m/s · linear.y: <b>0.000</b> m/s · angular.z: <b>0.000</b> rad/s<br>
+            sebességplafon: ±0.50 m/s előre-hátra, ±0.50 m/s oldalazás, ±0.50 rad/s szögsebesség
+          </div>
+        </div>
+      </div>
+
+      <div class="panel arm-panel">
+        <div class="panel-head">
+          <span>Kar + gripper vezérlés</span>
+          <span class="tag sim">SZIMULÁCIÓ</span>
+        </div>
+        <div class="panel-body">
+          <div class="slider-row"><label>j1_joint</label><input type="range" id="j0" min="-45" max="45" value="0"><span class="val" id="j0v">0°</span></div>
+          <div class="slider-row"><label>j2_joint</label><input type="range" id="j1" min="-45" max="45" value="0"><span class="val" id="j1v">0°</span></div>
+          <div class="slider-row"><label>j3_joint</label><input type="range" id="j2" min="-45" max="45" value="0"><span class="val" id="j2v">0°</span></div>
+
+          <div class="gripper-row">
+            <button id="gripOpen">Gripper: NYIT</button>
+            <button id="gripClose">Gripper: ZÁR</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-footer">
+      <button id="armBtn" disabled>ÉLESÍTÉS</button>
+      <span class="state" id="armState">nincs élesítve — csak MOCK-log</span>
+    </div>
+  </div>
+
+</div>
 </div>
 
 <script>
 const ROBOT_IP = "192.168.123.50";
 const ROSBRIDGE_PORT = 9090;
+// A kamerastream csak a robot loopback-címén él; a laptop SSH-alagútja adja a helyi 8080-as portot.
+const WEB_VIDEO_HOST = "127.0.0.1";
+const WEB_VIDEO_PORT = 8080;
+const ROS_URL = `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}`;
 
-// ---------- rosbridge connection (csak a bázis-parancshoz kell éles kapcsolat) ----------
-const ros = new ROSLIB.Ros({ url: `ws://${ROBOT_IP}:${ROSBRIDGE_PORT}` });
+// ---------- rosbridge connection (bázis-parancs + kamerák/térkép/telemetria mind ugyanezt használja) ----------
+const ros = new ROSLIB.Ros({ url: ROS_URL });
 const statusEl = document.getElementById('globalStatus');
+let rosReconnectTimer = null;
+function scheduleRosReconnect() {
+  if (rosReconnectTimer) return;
+  rosReconnectTimer = setTimeout(() => {
+    rosReconnectTimer = null;
+    if (!ros.isConnected) { try { ros.connect(ROS_URL); } catch (e) { /* soron következő próba */ } }
+  }, 3000);
+}
 ros.on('connection', () => {
   statusEl.textContent = "rosbridge: csatlakozva";
   statusEl.className = "ok";
   document.getElementById('armBtn').disabled = false;
+  // Újracsatlakozáskor a korábbi feliratkozások elveszhetnek — friss feliratkozás a térképre.
+  mapTopic.unsubscribe();
+  mapTopic.subscribe(drawMap);
 });
 function lostConnection(label) {
   statusEl.textContent = label;
   statusEl.className = "err";
   document.getElementById('armBtn').disabled = true;
   if (armed) setArmed(false, 'a rosbridge-kapcsolat megszakadt');
+  scheduleRosReconnect();
 }
 ros.on('error', () => lostConnection("rosbridge hiba — bázis leélesítve"));
 ros.on('close', () => lostConnection("rosbridge: lezárva — bázis leélesítve"));
+
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 // A /cmd_vel geometry_msgs/Twist típust 2026-09-18-án élőben megerősítették.
 const cmdVelTopic = new ROSLIB.Topic({
@@ -311,43 +512,631 @@ function log(cls, text) {
   while (logBox.childElementCount > 300) logBox.removeChild(logBox.firstChild);
 }
 
+// ================= KIS/NAGY NÉZET VÁLTÁS =================
+// Minden szenzornak KÉT DOM-eleme van (kis kép a bal sávban + nagy kép a középső nézetben) — mindkettőt
+// ugyanaz a JS frissíti egyszerre, így mindkettő mindig élő, és a nagy nézet a bal sávban választott
+// szenzort mutatja.
+const bigWrapId = {
+  tileC70: 'bigC70', tileMap: 'bigMap', tileRgb: 'bigRgb', tileDepth: 'bigDepth',
+  tileLidar: 'bigLidar', tilePc3d: 'bigPc3d'
+};
+const bigLabelText = {
+  tileC70: 'C70 kamera', tileMap: 'Térkép', tileRgb: 'Hátsó RGB', tileDepth: 'Hátsó mélység',
+  tileLidar: 'LiDAR — felülnézet', tilePc3d: '3D point cloud + LiDAR'
+};
+const bigPillText = {
+  tileC70: '/usb_cam/image_raw', tileMap: '/map · SLAM',
+  tileRgb: '/camera/rgb/image_raw', tileDepth: '/camera/depth/image_raw',
+  tileLidar: '/scan', tilePc3d: '/camera/depth/points + /scan'
+};
+// A nagyban látszó szenzor kisképe NEM kér párhuzamosan adatot a robottól (nem duplikáljuk a
+// kamera-streamet) — liveTargets() ilyenkor kihagyja a kisképet a frissítendő elemek közül.
+function liveTargets(sensorKey, bigEl, thumbEl) {
+  return activeBig === sensorKey ? [bigEl] : [bigEl, thumbEl];
+}
+let activeBig = null;
+function setBigSensor(target) {
+  if (!bigWrapId[target] || target === activeBig) return;
+  const prev = activeBig;
+  activeBig = target;
+  Object.values(bigWrapId).forEach(id => { document.getElementById(id).hidden = true; });
+  document.getElementById(bigWrapId[target]).hidden = false;
+  document.getElementById('bigLabel').textContent = bigLabelText[target];
+  document.getElementById('bigPill').textContent = bigPillText[target];
+  document.getElementById('bigHead').dataset.sensor = target;
+  document.querySelectorAll('.thumb-tile').forEach(t => t.classList.toggle('active', t.dataset.target === target));
+  // C70/RGB kisképe MJPEG-et kér — ezt explicit le/fel kell állítani; térkép/mélység csak canvas-rajzolás,
+  // ott a liveTargets() kihagyása elég, nem kell külön kérést indítani/leállítani.
+  if (prev === 'tileC70' || target === 'tileC70') refreshC70ThumbFeed();
+  if (prev === 'tileRgb' || target === 'tileRgb') refreshRgbFeed();
+  // A 3D pontfelhő EGYETLEN Three.js-renderelővel dolgozik (nem duplikáljuk a WebGL-rajzolást) —
+  // csak áthelyezzük a kis- vagy a nagy-nézet konténerébe, amelyik épp kell.
+  if (prev === 'tilePc3d' || target === 'tilePc3d') movePc3d(target === 'tilePc3d');
+}
+document.querySelectorAll('.thumb-tile').forEach(tile => {
+  tile.addEventListener('click', () => setBigSensor(tile.dataset.target));
+});
+// Az induló setBigSensor('tileC70') hívás a szkript VÉGÉN van (ld. lent), miután a C70/RGB
+// kisképeket kezelő const-ok (c70ImgThumb, rgbImgThumb, stb.) már mind léteznek.
+
+// ================= TÉRKÉP (/map, SLAM) =================
+const mapTopic = new ROSLIB.Topic({
+  ros, name: '/map', messageType: 'nav_msgs/OccupancyGrid',
+  throttle_rate: 500, queue_length: 1
+});
+const mapCanvas = document.getElementById('mapCanvas');
+const mapCanvasThumb = document.getElementById('mapCanvasThumb');
+const mapStatus = document.getElementById('mapStatus');
+const mapPlaceholder = document.getElementById('mapPlaceholder');
+const resetMapBtn = document.getElementById('resetMapBtn');
+let lastMapArrival = 0;
+let mapUpdates = 0;
+let lastMapHash = null;
+let mapResetting = false;
+let mapIgnoreBeforeMs = 0;
+
+function mapCells(data) {
+  if (Array.isArray(data)) return data;
+  if (typeof data !== 'string') return null;
+  const binary = atob(data);
+  const cells = new Int8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) cells[i] = binary.charCodeAt(i);
+  return cells;
+}
+
+function drawMap(msg) {
+  if (mapResetting) return;
+  const stamp = msg.header?.stamp;
+  const stampMs = stamp && Number.isFinite(stamp.secs) && Number.isFinite(stamp.nsecs)
+    ? stamp.secs * 1000 + stamp.nsecs / 1e6 : 0;
+  if (mapIgnoreBeforeMs && stampMs && stampMs < mapIgnoreBeforeMs) return;
+  const w = msg.info?.width, h = msg.info?.height;
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w * h > 10000000) return;
+  let cells;
+  try { cells = mapCells(msg.data); } catch (err) { console.warn('Térkép dekódolási hiba', err); return; }
+  if (!cells || cells.length < w * h || !Number.isFinite(msg.info?.resolution)) return;
+  const image = new ImageData(w, h);
+  let hash = 2166136261;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const value = cells[y * w + x];
+      hash = Math.imul(hash ^ (value + 1), 16777619) >>> 0;
+      const pixel = ((h - y - 1) * w + x) * 4;
+      const shade = value < 0 ? 67 : Math.round(239 - Math.max(0, Math.min(100, value)) * 2.04);
+      image.data[pixel] = shade;
+      image.data[pixel + 1] = shade;
+      image.data[pixel + 2] = shade;
+      image.data[pixel + 3] = 255;
+    }
+  }
+  liveTargets('tileMap', mapCanvas, mapCanvasThumb).forEach(canvas => {
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    canvas.getContext('2d').putImageData(image, 0, 0);
+    canvas.hidden = false;
+  });
+  mapPlaceholder.hidden = true;
+  lastMapArrival = Date.now();
+  mapUpdates++;
+  const changed = lastMapHash !== null && hash !== lastMapHash;
+  lastMapHash = hash;
+  const state = changed ? 'Térkép: tartalom változott' : mapUpdates > 1 ? 'Térkép: üzenetek érkeznek, tartalom változatlan' : 'Térkép: fogadva, frissítésre vár';
+  mapStatus.textContent = `${state} · ${w}×${h} · ${msg.info.resolution.toFixed(3)} m/cella`;
+}
+resetMapBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!window.confirm('Töröljük az eddig épített térképet, és kezdjük újra?')) return;
+  mapResetting = true;
+  resetMapBtn.disabled = true;
+  mapStatus.textContent = 'Térkép: a SLAM újraindítása folyamatban...';
+  try {
+    const response = await fetch('/api/reset-map', {
+      method: 'POST', headers: { 'X-Pickerbot-Action': 'reset-map' }, body: ''
+    });
+    if (!response.ok) {
+      let reason = 'A robot nem válaszolt a térkép újraindítására.';
+      try { const data = await response.json(); if (data && data.error) reason = data.error; } catch (e2) { /* nem JSON válasz */ }
+      throw new Error(reason);
+    }
+    mapIgnoreBeforeMs = Date.now() - 1000;
+    liveTargets('tileMap', mapCanvas, mapCanvasThumb).forEach(canvas => { canvas.hidden = true; });
+    mapPlaceholder.hidden = false;
+    mapPlaceholder.textContent = 'A térkép törölve. Új /map adatokra várunk.';
+    lastMapArrival = 0;
+    mapUpdates = 0;
+    lastMapHash = null;
+    mapStatus.textContent = 'Térkép: újraindítva, épül';
+  } catch (error) {
+    mapStatus.textContent = `Térkép: újraindítás sikertelen · ${error.message}`;
+  } finally {
+    mapResetting = false;
+    resetMapBtn.disabled = false;
+  }
+});
+setInterval(() => {
+  if (mapResetting) return;
+  if (!ros.isConnected) { mapStatus.textContent = 'Térkép: nincs ROS-kapcsolat'; return; }
+  if (!lastMapArrival) { mapStatus.textContent = 'Térkép: nincs /map üzenet'; return; }
+  if (Date.now() - lastMapArrival > 15000) mapStatus.textContent = 'Térkép: nem frissül (15+ mp)';
+}, 3000);
+
+// ================= C70 KAMERA (kar) — MJPEG elsődleges, ROS-topic tartalék =================
+const WEB_VIDEO_C70_PATH = 'stream?topic=/usb_cam/image_raw&width=320&height=240&quality=55';
+const c70StreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/${WEB_VIDEO_C70_PATH}`;
+const c70Img = document.getElementById('c70Img');
+const c70ImgThumb = document.getElementById('c70ImgThumb');
+const c70Canvas = document.getElementById('c70Canvas');
+const c70CanvasThumb = document.getElementById('c70CanvasThumb');
+const c70Status = document.getElementById('c70Status');
+let c70FallbackStarted = false;
+let c70MjpegStarted = false;
+let lastC70Frame = 0;
+const c70Topic = new ROSLIB.Topic({
+  ros, name: '/usb_cam/image_raw', messageType: 'sensor_msgs/Image',
+  throttle_rate: 2000, queue_length: 1
+});
+
+function onC70RosImage(msg) {
+  const w = msg.width, h = msg.height, step = msg.step;
+  if (msg.encoding !== 'rgb8' || !Number.isInteger(w) || !Number.isInteger(h) ||
+      w < 1 || h < 1 || w * h > 4000000 || step < w * 3) {
+    c70Status.textContent = 'Kamera: nem támogatott képformátum';
+    return;
+  }
+  let bytes;
+  try { bytes = typeof msg.data === 'string' ? base64ToBytes(msg.data) : msg.data; }
+  catch (err) { c70Status.textContent = 'Kamera: képadat hiba'; return; }
+  if (!bytes || bytes.length < step * h) return;
+  const frame = new ImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const src = y * step + x * 3;
+      const dst = (y * w + x) * 4;
+      frame.data[dst] = bytes[src];
+      frame.data[dst + 1] = bytes[src + 1];
+      frame.data[dst + 2] = bytes[src + 2];
+      frame.data[dst + 3] = 255;
+    }
+  }
+  liveTargets('tileC70', c70Canvas, c70CanvasThumb).forEach(canvas => {
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    canvas.getContext('2d').putImageData(frame, 0, 0);
+    canvas.hidden = false;
+  });
+  lastC70Frame = Date.now();
+  const stamp = msg.header?.stamp;
+  const captureMs = stamp && Number.isFinite(stamp.secs) && Number.isFinite(stamp.nsecs)
+    ? stamp.secs * 1000 + stamp.nsecs / 1e6 : NaN;
+  const lagSeconds = Number.isFinite(captureMs)
+    ? Math.max(0, (lastC70Frame - captureMs) / 1000).toFixed(1) : '?';
+  c70Status.textContent = `Kamera: ROS-kép · ${w}×${h} · ${lagSeconds} s késés`;
+}
+
+function startC70Fallback() {
+  if (c70FallbackStarted) return;
+  c70FallbackStarted = true;
+  c70MjpegStarted = false;
+  liveTargets('tileC70', c70Img, c70ImgThumb).forEach(el => { el.hidden = true; });
+  c70Status.textContent = 'Kamera: tartalék ROS-kapcsolatra vár';
+  c70Topic.subscribe(onC70RosImage);
+}
+
+c70Img.addEventListener('load', () => {
+  c70MjpegStarted = true;
+  if (c70FallbackStarted) c70Topic.unsubscribe(onC70RosImage);
+  c70FallbackStarted = false;
+  liveTargets('tileC70', c70Canvas, c70CanvasThumb).forEach(el => { el.hidden = true; });
+  liveTargets('tileC70', c70Img, c70ImgThumb).forEach(el => { el.hidden = false; });
+  c70Status.textContent = 'Kamera: élő MJPEG';
+});
+c70Img.addEventListener('error', startC70Fallback);
+c70Img.src = c70StreamUrl;
+// A kisképe csak akkor kap saját MJPEG-kérést, ha épp NEM ez a nagy nézet (lásd refreshC70ThumbFeed
+// és a szkript végén lévő induló setBigSensor hívás) — így nem duplázzuk a kamera-streamet.
+setTimeout(() => {
+  if (!c70MjpegStarted && !c70Img.naturalWidth) startC70Fallback();
+}, 5000);
+let checkingC70Connection = false;
+function checkC70Connection() {
+  if ((!c70MjpegStarted && !c70FallbackStarted) || checkingC70Connection) return;
+  checkingC70Connection = true;
+  const probe = new Image();
+  const deadline = setTimeout(() => {
+    probe.onload = probe.onerror = null;
+    checkingC70Connection = false;
+    startC70Fallback();
+  }, 15000);
+  probe.onload = () => { clearTimeout(deadline); checkingC70Connection = false; };
+  probe.onerror = () => {
+    clearTimeout(deadline);
+    checkingC70Connection = false;
+    startC70Fallback();
+  };
+  probe.src = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/snapshot?topic=/usb_cam/image_raw&width=320&height=240&quality=55&_=${Date.now()}`;
+}
+setInterval(checkC70Connection, 8000);
+setInterval(() => {
+  if (c70FallbackStarted && lastC70Frame && Date.now() - lastC70Frame > 15000) {
+    c70Status.textContent = 'Kamera: a ROS-kép nem frissül (15+ mp)';
+  }
+  if (c70FallbackStarted) {
+    const targets = liveTargets('tileC70', c70Img, c70ImgThumb);
+    targets.forEach(el => { el.hidden = false; });
+    const url = `${c70StreamUrl}&_=${Date.now()}`;
+    targets.forEach(el => { el.src = url; });
+  }
+}, 5000);
+// A kisképe csak akkor kap saját MJPEG-kérést, ha épp NEM ez a nagy nézet — lásd setBigSensor().
+function refreshC70ThumbFeed() {
+  if (activeBig === 'tileC70') {
+    c70ImgThumb.removeAttribute('src');
+    c70ImgThumb.hidden = true;
+    c70CanvasThumb.hidden = true;
+  } else {
+    c70ImgThumb.hidden = false;
+    c70ImgThumb.src = `${c70StreamUrl}&_=${Date.now()}`;
+  }
+}
+
+// ================= HÁTSÓ RGB + MÉLYSÉG (Astra) =================
+const rgbImg = document.getElementById('rgbImg');
+const rgbImgThumb = document.getElementById('rgbImgThumb');
+const rgbStreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
+// A nagy ÉS a kis RGB-kép is csak akkor tartson nyitva MJPEG-kapcsolatot, ha épp ő a látszó —
+// a másikét le kell állítani, különben a web_video_server-nél versenyeznek egymással (lásd setBigSensor()).
+function refreshRgbFeed() {
+  if (activeBig === 'tileRgb') {
+    rgbImgThumb.removeAttribute('src');
+    rgbImg.src = `${rgbStreamUrl}&_=${Date.now()}`;
+  } else {
+    rgbImg.removeAttribute('src');
+    rgbImgThumb.src = `${rgbStreamUrl}&_=${Date.now()}`;
+  }
+}
+refreshRgbFeed(); // induláskor a RGB nincs nagyban, tehát a kisképe azonnal éljen, a nagyé nem
+
+const depthTopic = new ROSLIB.Topic({
+  ros, name: '/camera/depth/image_raw', messageType: 'sensor_msgs/Image',
+  throttle_rate: 200, queue_length: 1
+});
+const dCanvas = document.getElementById('depthCanvas');
+const dCanvasThumb = document.getElementById('depthCanvasThumb');
+depthTopic.subscribe(function(msg) {
+  if (msg.encoding !== '16UC1') return;
+  const bytes = base64ToBytes(msg.data);
+  const dv = new DataView(bytes.buffer);
+  const little = !msg.is_bigendian;
+  const w = msg.width, h = msg.height;
+  const imgData = new ImageData(w, h);
+  const MAX_MM = 4000;
+  for (let i = 0, p = 0; p < w * h; p++, i += 2) {
+    const mm = dv.getUint16(i, little);
+    let v;
+    if (mm === 0) { v = 0; }
+    else { v = 255 - Math.min(255, Math.round((mm / MAX_MM) * 255)); }
+    const o = p * 4;
+    imgData.data[o] = v * 0.55;
+    imgData.data[o + 1] = v * 0.85;
+    imgData.data[o + 2] = v;
+    imgData.data[o + 3] = 255;
+  }
+  liveTargets('tileDepth', dCanvas, dCanvasThumb).forEach(canvas => {
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    canvas.getContext('2d').putImageData(imgData, 0, 0);
+    canvas.hidden = false;
+  });
+  document.getElementById('depthStat').textContent = `${w}x${h}`;
+});
+
+function makeToggleService(name) {
+  return new ROSLIB.Service({ ros, name, serviceType: 'std_srvs/SetBool' });
+}
+const svcColor = makeToggleService('/camera/toggle_color');
+const svcDepth = makeToggleService('/camera/toggle_depth');
+// /camera/toggle_ir SZÁNDÉKOSAN nincs bekötve: élesben teszteltük, a driver ('astra_camera')
+// glog FATAL hibával összeomlik ("stream_video_mode_.count(stream_index)"), USB-resetet igényel utána.
+
+function wireToggle(checkboxId, wrapId, service, onChange) {
+  const cb = document.getElementById(checkboxId);
+  const wrap = document.getElementById(wrapId);
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    wrap.classList.add('pending');
+    const req = new ROSLIB.ServiceRequest({ data: cb.checked });
+    service.callService(req, (res) => {
+      wrap.classList.remove('pending');
+      if (onChange) onChange(cb.checked, res);
+    }, (err) => {
+      wrap.classList.remove('pending');
+      cb.checked = !cb.checked;
+      console.error('toggle hiba:', service.name, err);
+    });
+  });
+  wrap.addEventListener('click', (e) => e.stopPropagation());
+}
+wireToggle('toggleColor', 'toggleColorWrap', svcColor, (on) => {
+  const url = on ? `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw&_=${Date.now()}` : '';
+  liveTargets('tileRgb', rgbImg, rgbImgThumb).forEach(el => { el.src = url; });
+});
+wireToggle('toggleDepth', 'toggleDepthWrap', svcDepth);
+
+// Háttérbe kerülő fülnél a kamera-kapcsolatokat szándékosan lezárjuk (nem pufferelődik tovább),
+// előtérbe kerüléskor pedig azonnal friss (cache nélküli) kapcsolatot nyitunk.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    liveTargets('tileC70', c70Img, c70ImgThumb).forEach(el => el.removeAttribute('src'));
+    liveTargets('tileRgb', rgbImg, rgbImgThumb).forEach(el => el.removeAttribute('src'));
+    return;
+  }
+  c70MjpegStarted = false;
+  c70FallbackStarted = false;
+  liveTargets('tileC70', c70Img, c70ImgThumb).forEach(el => { el.hidden = false; });
+  liveTargets('tileC70', c70Canvas, c70CanvasThumb).forEach(el => { el.hidden = true; });
+  const c70Url = `${c70StreamUrl}&_=${Date.now()}`;
+  liveTargets('tileC70', c70Img, c70ImgThumb).forEach(el => { el.src = c70Url; });
+  const rgbUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw&_=${Date.now()}`;
+  liveTargets('tileRgb', rgbImg, rgbImgThumb).forEach(el => { el.src = rgbUrl; });
+  setTimeout(() => {
+    if (document.hidden) return;
+    if (!c70MjpegStarted && !c70Img.naturalWidth) startC70Fallback();
+  }, 5000);
+  if (!ros.isConnected) { try { ros.connect(ROS_URL); } catch (e) { /* soron következő próba */ } }
+});
+
+// ================= 3D POINT CLOUD + LiDAR (Three.js, EGYETLEN renderelő, kis/nagy nézet közt áthelyezve) =================
+// Előbb ez a blokk fut le (pc3dScene, lidarGeom, pointsGeom, updateLidar3D létrehozása), és csak utána
+// iratkozunk fel a /scan és /camera/depth/points topicokra — így az első élő üzenet sosem érhet ide
+// hamarabb, mint hogy a rá hivatkozó THREE.js objektumok elkészülnek (élő tesztben elkapott hiba volt:
+// "can't access lexical declaration 'lidarGeom' before initialization", mert a robot gyors LAN-kapcsolatán
+// az első /scan üzenet a CDN-ről töltött three.min.js/OrbitControls.js betöltése közben megérkezhetett,
+// még mielőtt a lenti THREE-objektumok inicializálódtak volna).
+// TF: laser -> camera_depth_optical_frame. Fix mechanikai szerelés (nem mozog egymáshoz képest),
+// ezért nem élő TF-et kérünk, a mért értéket beégetjük:
+//   `rosrun tf tf_echo laser camera_depth_optical_frame` -> translation [0.198,-0.000,0.454], quat [-0.5,-0.5,0.5,0.5]
+const laserToCamera = {
+  quat: new THREE.Quaternion(-0.5, -0.5, 0.5, 0.5),
+  pos: new THREE.Vector3(0.198, -0.000, 0.454)
+};
+
+// Élő próba (2026-09-23): "Uncaught Error: Error creating WebGL context" a WebGLRenderer
+// létrehozásánál (böngésző-oldali WebGL-kontextus-kimerülés sok újratöltés után). Mivel ez a
+// szkript LEGFELSŐ SZINTJÉN (nem egy eseménykezelőben) történt, egy el nem kapott hiba itt
+// MEGÁLLÍTOTTA volna a teljes szkript további futását — vagyis a kamerák, a térkép, a LiDAR,
+// a vezérlés bekötése és a log() hívások SEMMELYIKE nem futott volna le utána. Ezért a WebGL-t
+// igénylő rész try/catch-be került: ha a 3D-renderelő nem jön létre, a többi nézet és a
+// vezérlés attól függetlenül továbbra is működik, csak a 3D nézet marad üresen.
+let pc3dAvailable = false;
+let pc3dEl, pcStat, pc3dScene, camera3d, renderer, pc3dControls, pointsGeom, pointsObj, lidarGeom, lidarObj;
+
+function resizePc3dRenderer() {
+  if (!pc3dAvailable) return;
+  const w = pc3dEl.clientWidth, h = pc3dEl.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h);
+  camera3d.aspect = w / h;
+  camera3d.updateProjectionMatrix();
+}
+window.addEventListener('resize', resizePc3dRenderer);
+
+function movePc3d(toBig) {
+  if (!pc3dAvailable) return;
+  const slot = document.getElementById(toBig ? 'pc3dBigSlot' : 'pc3dThumbSlot');
+  slot.appendChild(pc3dEl);
+  resizePc3dRenderer();
+}
+
+function animatePc3d() {
+  requestAnimationFrame(animatePc3d);
+  if (!pc3dAvailable) return;
+  pc3dControls.update();
+  renderer.render(pc3dScene, camera3d);
+}
+animatePc3d();
+
+function updateLidar3D(msg) {
+  if (!pc3dAvailable) return;
+  const n = msg.ranges.length;
+  const tmp = new THREE.Vector3();
+  const positions = new Float32Array(n * 3);
+  let w = 0;
+  for (let i = 0; i < n; i++) {
+    const range = msg.ranges[i];
+    if (!isFinite(range) || range < msg.range_min || range > msg.range_max) continue;
+    const angle = msg.angle_min + i * msg.angle_increment;
+    tmp.set(range * Math.cos(angle), range * Math.sin(angle), 0);
+    tmp.applyQuaternion(laserToCamera.quat).add(laserToCamera.pos);
+    positions[w * 3 + 0] = tmp.x;
+    positions[w * 3 + 1] = -tmp.y;
+    positions[w * 3 + 2] = -tmp.z;
+    w++;
+  }
+  lidarGeom.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, w * 3), 3));
+  lidarGeom.attributes.position.needsUpdate = true;
+  lidarGeom.computeBoundingSphere();
+}
+
+try {
+  pc3dEl = document.createElement('div');
+  pc3dEl.className = 'pc3d-slot';
+  pcStat = document.getElementById('pcStat');
+
+  pc3dScene = new THREE.Scene();
+  pc3dScene.background = new THREE.Color(0x12161c);
+  camera3d = new THREE.PerspectiveCamera(60, 1, 0.05, 30);
+  camera3d.position.set(0, 0, 1.2);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  pc3dEl.appendChild(renderer.domElement);
+  pc3dControls = new THREE.OrbitControls(camera3d, renderer.domElement);
+  pc3dControls.enableDamping = true;
+  pc3dControls.dampingFactor = 0.08;
+  pc3dControls.rotateSpeed = 0.6;
+  pc3dScene.add(new THREE.AxesHelper(0.3));
+
+  // Induláskor a kisképe-sávban él (a 3D nézet alapból NEM nagy) — lásd bigWrapId/setBigSensor.
+  document.getElementById('pc3dThumbSlot').appendChild(pc3dEl);
+  setTimeout(resizePc3dRenderer, 50);
+
+  pointsGeom = new THREE.BufferGeometry();
+  pointsObj = new THREE.Points(pointsGeom, new THREE.PointsMaterial({ size: 0.008, vertexColors: true }));
+  pc3dScene.add(pointsObj);
+
+  lidarGeom = new THREE.BufferGeometry();
+  lidarObj = new THREE.Points(lidarGeom, new THREE.PointsMaterial({ size: 0.012, color: 0xe0a05c }));
+  pc3dScene.add(lidarObj);
+
+  pc3dAvailable = true;
+} catch (e) {
+  console.error('3D nézet (WebGL) nem érhető el:', e);
+  const pc3dErrEl = document.getElementById('pcStat');
+  if (pc3dErrEl) pc3dErrEl.textContent = '3D nézet nem elérhető (WebGL hiba) — a többi nézet ettől függetlenül működik';
+}
+
+// PointCloud2 parsing (ritkítva teljesítmény miatt), throttled feliratkozás.
+// A nyers üzenet ÓRIÁSI (640x480 pont x 16 bájt ≈ 4,9 MB, base64-ben ~6,5 MB) — ez a WiFi-n
+// keresztül könnyen kiszorítja a kamera-videót és a többi ROS-topicot (élő próbában látott
+// tünet: amikor a felhő adatot tolt, minden más leállt, utána fordítva). A PC_STRIDE csak a
+// BÖNGÉSZŐBEN ritkít, a hálózaton a teljes üzenet mindig átmegy — ezért a throttle_rate-et
+// emeltük fel (400 -> 2000 ms), hogy ötödére csökkenjen a felhő generálta hálózati forgalom.
+const PC_STRIDE = 6; // csak minden 6. pontot dolgozzuk fel
+// Élő próba (2026-09-23): a felhasználó kérésére IDEIGLENESEN kikapcsolva, hogy kizárjuk, tényleg
+// ez okozza-e a kamera/térkép/LiDAR felváltva-eltűnős WiFi-versengést. Visszakapcsoláshoz csak ezt
+// állítsd true-ra — a topic-feliratkozás és a rajzoló kód változatlanul megvan alatta.
+const PC_CLOUD_ENABLED = false;
+const pcTopic = new ROSLIB.Topic({
+  ros, name: '/camera/depth/points', messageType: 'sensor_msgs/PointCloud2',
+  throttle_rate: 2000, queue_length: 1
+});
+if (PC_CLOUD_ENABLED) {
+pcTopic.subscribe(function(msg) {
+  if (!pc3dAvailable) return;
+  const fields = {};
+  for (const f of msg.fields) fields[f.name] = f;
+  if (!fields.x || !fields.y || !fields.z) return;
+  const bytes = base64ToBytes(msg.data);
+  const dv = new DataView(bytes.buffer);
+  const little = !msg.is_bigendian;
+  const step = msg.point_step;
+  const totalPoints = Math.floor(bytes.length / step);
+  const outCount = Math.floor(totalPoints / PC_STRIDE);
+  const positions = new Float32Array(outCount * 3);
+  const colors = new Float32Array(outCount * 3);
+  const hasColor = !!fields.rgb;
+  let w = 0;
+  for (let i = 0, j = 0; i < totalPoints; i += PC_STRIDE) {
+    const base = i * step;
+    const x = dv.getFloat32(base + fields.x.offset, little);
+    const y = dv.getFloat32(base + fields.y.offset, little);
+    const z = dv.getFloat32(base + fields.z.offset, little);
+    if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
+    positions[j * 3 + 0] = x;
+    positions[j * 3 + 1] = -y;
+    positions[j * 3 + 2] = -z;
+    if (hasColor) {
+      const rgbFloat = dv.getFloat32(base + fields.rgb.offset, little);
+      const buf = new ArrayBuffer(4);
+      new Float32Array(buf)[0] = rgbFloat;
+      const rgbBytes = new Uint8Array(buf);
+      colors[j * 3 + 0] = rgbBytes[2] / 255;
+      colors[j * 3 + 1] = rgbBytes[1] / 255;
+      colors[j * 3 + 2] = rgbBytes[0] / 255;
+    } else {
+      const depthNorm = Math.min(1, z / 3);
+      colors[j * 3 + 0] = 0.37 + depthNorm * 0.3;
+      colors[j * 3 + 1] = 0.76 - depthNorm * 0.3;
+      colors[j * 3 + 2] = 0.84;
+    }
+    j++;
+    w = j;
+  }
+  pointsGeom.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, w * 3), 3));
+  pointsGeom.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, w * 3), 3));
+  pointsGeom.attributes.position.needsUpdate = true;
+  pointsGeom.attributes.color.needsUpdate = true;
+  pointsGeom.computeBoundingSphere();
+  if (pcStat) pcStat.textContent = `${w} / ${totalPoints} pont (1/${PC_STRIDE} minta)`;
+});
+} else {
+  if (pcStat) pcStat.textContent = 'Pontfelhő ideiglenesen kikapcsolva (WiFi-sávszélesség teszt)';
+}
+
+// ================= LiDAR 2D FELÜLNÉZET (/scan) =================
+// A feliratkozás szándékosan a fenti THREE.js/lidarGeom blokk UTÁN van (lásd az ottani megjegyzést).
+const scanTopic = new ROSLIB.Topic({ ros, name: '/scan', messageType: 'sensor_msgs/LaserScan' });
+const lidarCanvas = document.getElementById('lidarCanvas');
+const lidarCanvasThumb = document.getElementById('lidarCanvasThumb');
+const lidarStat = document.getElementById('lidarStat');
+const PPM = 90;
+
+function drawScanOn(canvas, msg) {
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#232a33";
+  ctx.fillStyle = "#5c6472";
+  ctx.font = "10px monospace";
+  for (let r = 1; r <= 4; r++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * PPM, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillText(r + "m", cx + 3, cy - r * PPM);
+  }
+  ctx.fillStyle = "#e0a05c";
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#5fc3d6";
+  let valid = 0;
+  const n = msg.ranges.length;
+  for (let i = 0; i < n; i++) {
+    const range = msg.ranges[i];
+    if (!isFinite(range) || range < msg.range_min || range > msg.range_max) continue;
+    const angle = msg.angle_min + i * msg.angle_increment;
+    const x = cx + range * Math.cos(angle) * PPM;
+    const y = cy - range * Math.sin(angle) * PPM;
+    ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill();
+    valid++;
+  }
+  return valid;
+}
+function drawScan(msg) {
+  let valid = 0;
+  liveTargets('tileLidar', lidarCanvas, lidarCanvasThumb).forEach(canvas => {
+    canvas.hidden = false;
+    valid = drawScanOn(canvas, msg);
+  });
+  lidarStat.textContent = `${valid}/${msg.ranges.length} pont`;
+  updateLidar3D(msg);
+}
+scanTopic.subscribe(drawScan);
+
 // ================= BÁZIS (mecanum) VEZÉRLÉS =================
 // A csúszkák felső határa a fizikai kontrollerrel 2026-09-23-án mért csúcsérték (telemetria,
 // /odom alapján): ±0.55 m/s előre-hátra, ±0.57 m/s oldalazás, ±0.98 rad/s forgás. A webes
 // vezérlés emiatt nem lehet gyorsabb, mint amit a kontrollerrel is meg lehet mutatni.
 // Az alapértelmezett (induláskori) értékek továbbra is óvatosak, NEM ezek a mért csúcsok —
-// a csúszkával kell felhúzni, ha többre van szükség. A DIRS/recomputeTarget lentebb van.
+// a csúszkával kell felhúzni, ha többre van szükség.
 // Ha ez a szám változik, a xavier_control/base_drive.py-ban lévő megfelelőt is frissítsd.
 const LINEAR_SLIDER_MIN = 0.05;
 const LINEAR_SLIDER_MAX = 0.55;   // mért kontroller-csúcssebesség (2026-09-23)
 let linearLimit = 0.5;            // alapérték a felhasználó kérésére (2026-09-23), a mért csúcs alatt
 // Élő próba (felhasználói jelzés): az "előre" gomb hátrafelé vitte a robotot -> az x előjelét megfordítjuk.
-// Az y (oldalazás) és a forgás előjelét még NEM ellenőriztük; ha azok is fordítottak, itt külön kell állítani.
 const X_SIGN = -1;
-const MAX_ANGULAR_RADPS = 0.5;          // alapérték a felhasználó kérésére (2026-09-23); a csúszka ezt csak a webes forgatógombokra írja felül
+const MAX_ANGULAR_RADPS = 0.5;
 const ANGULAR_SLIDER_MIN = 0.1;
 const ANGULAR_SLIDER_MAX = 0.98;  // mért kontroller-csúcs szögsebesség (2026-09-23)
-// Becsült határ, NEM mért érték: 12 Hz-es LiDAR-nál 0.6 rad/s ~ 0.05 rad/szkennelés. A 2026-09-21-i mérésnél
-// 0.5 rad/szkennelés (kb. 6 rad/s) fölötti fordulásnál omlottak össze a gmapping részecskéi (docs/11).
 const ANGULAR_MAP_WARN_RADPS = 0.6;
 let angularLimit = MAX_ANGULAR_RADPS;
-// Oldalazás (A/D) sebességhatára. A korábbi "donut"-hiba (2026-09-23-án megjavítva, ld. docs/11)
-// miatt volt itt átmenetileg fél sebességre korlátozva; azóta a kerekek X-mintában vannak, és
-// élő roboton igazoltuk, hogy tisztán oldalra megy — a határ most már a mért kontroller-csúcs.
-// A csúszka JS-e lentebb van, de az értéket itt kell deklarálni, mert a recomputeTarget()
-// már a lenti csúszka-inicializálás előtt is lefuthat (pl. a forgási csúszka apply()-jából).
 const STRAFE_SLIDER_MIN = 0.03;
 const STRAFE_SLIDER_MAX = 0.57;   // mért kontroller-csúcssebesség (2026-09-23)
-let strafeLimit = 0.5;            // alapérték a felhasználó kérésére (2026-09-23), a mért csúcs alatt
+let strafeLimit = 0.5;
 const MAX_LINEAR_ACCEL_PER_TICK = 0.03;
 const MAX_ANGULAR_ACCEL_PER_TICK = 0.06;
 const TICK_MS = 100; // 10 Hz — jóval ritkább, mint egy valós joystick-loop, de elég egy manuális UI-hoz
-// Az inaktivitás-alapú automatikus leélesítést felhasználói kérésre kivettük (2026-09-22) —
-// ez a konstans jelenleg nincs használva, csak dokumentációként maradt itt.
-const ARM_TIMEOUT_MS = 20000;
+// Az inaktivitás-alapú automatikus leélesítést felhasználói kérésre kivettük (2026-09-22, ld. napló) —
+// a döntés és az indoklás docs/11-munkamenet-atadas.md-ben van, ide kód már nem kellett hozzá.
 
 let armed = false;
-let lastActivity = Date.now();
 let current = { x: 0, y: 0, az: 0 };   // ténylegesen kiküldött (rate-limitelt) parancs
 let target = { x: 0, y: 0, az: 0 };    // gomb-állapotból számolt kért parancs
 let lastPublishLog = 0;
@@ -365,11 +1154,10 @@ function setArmed(value, reason) {
   const state = document.getElementById('armState');
   btn.classList.toggle('armed', armed);
   if (armed) {
-    state.textContent = "ÉLESÍTVE — a bázis-parancsok valóban kimennek /cmd_vel-re";
+    state.textContent = "ÉLESÍTVE — a parancsok kimennek";
     state.classList.add('armed-label');
-    lastActivity = Date.now();
   } else {
-    state.textContent = "nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra";
+    state.textContent = "nincs élesítve — csak MOCK-log";
     state.classList.remove('armed-label');
   }
   log(armed ? 'sent' : 'mock', armed ? "ÉLESÍTVE" : "leélesítve" + (reason ? ` (${reason})` : ''));
@@ -382,13 +1170,13 @@ function cancelArmConfirm() {
   if (armConfirmTimer) { clearTimeout(armConfirmTimer); armConfirmTimer = null; }
   const btn = document.getElementById('armBtn');
   btn.textContent = 'ÉLESÍTÉS';
-  if (!armed) document.getElementById('armState').textContent = "nincs élesítve — csak MOCK-log, semmi nem megy ki a robotra";
+  if (!armed) document.getElementById('armState').textContent = "nincs élesítve — csak MOCK-log";
 }
 document.getElementById('armBtn').addEventListener('click', () => {
   if (armed) { setArmed(false, 'kézi leélesítés'); return; }
   if (!armConfirmTimer) {
     document.getElementById('armBtn').textContent = 'MEGERŐSÍTEM';
-    document.getElementById('armState').textContent = "A robot bázisa mozogni fog a gombok szerint. Kattints újra 4 másodpercen belül az élesítéshez.";
+    document.getElementById('armState').textContent = "Mozogni fog a gombok szerint. Kattints újra 4 mp-en belül.";
     armConfirmTimer = setTimeout(cancelArmConfirm, 4000);
     return;
   }
@@ -399,7 +1187,7 @@ document.getElementById('armBtn').addEventListener('click', () => {
 function updateReadout() {
   document.getElementById('baseReadout').innerHTML =
     `linear.x: <b>${current.x.toFixed(3)}</b> m/s · linear.y: <b>${current.y.toFixed(3)}</b> m/s · angular.z: <b>${current.az.toFixed(3)}</b> rad/s<br>` +
-    `sebességplafon (a felső határ mért kontroller-csúcs, az induló érték óvatos): ±${linearLimit.toFixed(2)} m/s előre-hátra (csúszkával), ±${strafeLimit.toFixed(2)} m/s oldalazás (csúszkával), ±${angularLimit.toFixed(2)} rad/s szögsebesség (forgás, csúszkával)`;
+    `sebességplafon: ±${linearLimit.toFixed(2)} m/s előre-hátra, ±${strafeLimit.toFixed(2)} m/s oldalazás, ±${angularLimit.toFixed(2)} rad/s szögsebesség`;
 }
 
 function publishTwist() {
@@ -423,7 +1211,9 @@ function publishTwist() {
 // a fizikai kontrolleren nincs átlós mozgás, ezért a webes felület se kínáljon olyat.
 const DIRS = {
   w: { x: 1, y: 0, az: 0 }, s: { x: -1, y: 0, az: 0 },
-  a: { x: 0, y: 1, az: 0 }, d: { x: 0, y: -1, az: 0 },
+  // Élő próba (felhasználói jelzés, 2026-09-24): A-ra jobbra ment, D-re balra — az y előjelét
+  // megfordítottuk, hogy A tényleg balra, D tényleg jobbra vigye a robotot.
+  a: { x: 0, y: -1, az: 0 }, d: { x: 0, y: 1, az: 0 },
 };
 const pressed = new Set();
 
@@ -446,7 +1236,7 @@ function wireHold(id, key) {
   const down = (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
-    pressed.add(key); el.classList.add('pressed'); recomputeTarget(); lastActivity = Date.now();
+    pressed.add(key); el.classList.add('pressed'); recomputeTarget();
     if (!armed) log('mock', `MOCK — ${key} (a bázis nincs élesítve)`);
   };
   const up = () => { pressed.delete(key); el.classList.remove('pressed'); recomputeTarget(); };
@@ -490,7 +1280,7 @@ document.getElementById('estopBtn').addEventListener('click', () => {
     box.classList.toggle('over', over);
     if (over && !wasOver) log('mock', `Figyelem: ${angularLimit.toFixed(2)} rad/s forgás a térképezés szétcsúszását okozhatja`);
     wasOver = over;
-    current.az = clamp(current.az, angularLimit);   // csökkentéskor azonnal érvényesül
+    current.az = clamp(current.az, angularLimit);
     recomputeTarget();
     updateReadout();
   }
@@ -506,7 +1296,7 @@ document.getElementById('estopBtn').addEventListener('click', () => {
     const v = parseFloat(slider.value);
     linearLimit = Math.max(LINEAR_SLIDER_MIN, Math.min(LINEAR_SLIDER_MAX, isFinite(v) ? v : linearLimit));
     label.textContent = linearLimit.toFixed(2) + " m/s";
-    current.x = clamp(current.x, linearLimit);   // csökkentéskor azonnal érvényesül
+    current.x = clamp(current.x, linearLimit);
     recomputeTarget();
     updateReadout();
   }
@@ -515,7 +1305,6 @@ document.getElementById('estopBtn').addEventListener('click', () => {
 })();
 
 // ---------- oldalazás (A/D) sebesség-csúszka, külön az előre/hátrától ----------
-// A STRAFE_SLIDER_MIN/MAX és strafeLimit a fájl elején van deklarálva (ld. ott a megjegyzést).
 (function wireStrafeLimit() {
   const slider = document.getElementById('strafeLimit');
   const label = document.getElementById('strafeLimitV');
@@ -523,7 +1312,7 @@ document.getElementById('estopBtn').addEventListener('click', () => {
     const v = parseFloat(slider.value);
     strafeLimit = Math.max(STRAFE_SLIDER_MIN, Math.min(STRAFE_SLIDER_MAX, isFinite(v) ? v : strafeLimit));
     label.textContent = strafeLimit.toFixed(2) + " m/s";
-    current.y = clamp(current.y, strafeLimit);   // csökkentéskor azonnal érvényesül
+    current.y = clamp(current.y, strafeLimit);
     recomputeTarget();
     updateReadout();
   }
@@ -533,15 +1322,11 @@ document.getElementById('estopBtn').addEventListener('click', () => {
 
 // billentyűzet is működjön: W/S előre-hátra, A/D oldalazás (fordulás nélkül), Q/E forgatás
 // (tengelye körül, a helyén), a nyilak is jók forgatáshoz.
-// Q/W/E/A/S/D ugyanazon a fizikai helyen van magyar (QWERTZ) és amerikai (QWERTY) kiosztáson is,
-// tehát magyar billentyűzeten is ugyanoda kell nyúlni.
 const KEYMAP = { w:'w', s:'s', a:'a', d:'d', q:'rotLeft', e:'rotRight', ArrowLeft:'rotLeft', ArrowRight:'rotRight' };
 // Biztonsági védőháló (2026-09-22-i eset után): ha a böngésző/OS elveszít egy keyup eseményt,
-// a billentyű örökre "lenyomva" maradna, és a robot nem áll meg (ez tényleg megtörtént — a robot
-// asztalnak ütközött, mert a W billentyű elengedésére nem reagált semmi). Amíg egy billentyűt
-// ténylegesen nyomva tartasz, az OS ismétlődő keydown-eseményeket küld rá (billentyű-ismétlés);
-// ha egy adott billentyűre KEY_ALIVE_MS ideig nem jön újabb keydown (se első, se ismétlődő),
-// a felület automatikusan elengedettnek veszi, keyup nélkül is.
+// a billentyű örökre "lenyomva" maradna, és a robot nem áll meg. Amíg egy billentyűt ténylegesen
+// nyomva tartasz, az OS ismétlődő keydown-eseményeket küld rá; ha egy billentyűre KEY_ALIVE_MS
+// ideig nem jön újabb keydown, a felület automatikusan elengedettnek veszi, keyup nélkül is.
 const KEY_ALIVE_MS = 700;
 const keyLastSeen = new Map();
 window.addEventListener('keydown', (e) => {
@@ -551,7 +1336,7 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   keyLastSeen.set(key, Date.now());
   if (e.repeat) return;
-  pressed.add(key); recomputeTarget(); lastActivity = Date.now();
+  pressed.add(key); recomputeTarget();
   const el = document.getElementById(key);
   if (el) el.classList.add('pressed');
   if (!armed) log('mock', `MOCK — ${key} (a bázis nincs élesítve)`);
@@ -581,10 +1366,9 @@ window.addEventListener('pointerup', () => {
   pressed.clear(); recomputeTarget();
   document.querySelectorAll('.pressed').forEach(el => el.classList.remove('pressed'));
 });
-// Fókuszvesztéskor csak akkor kell teljes leélesítés (újra-megerősítést igénylő biztonsági leállás),
-// ha épp ténylegesen ment a robot (pressed nem üres) — ilyenkor a keyup elveszhet (ld. a mai eset:
-// a W billentyű elengedése nem érkezett meg). Ha semmi nem volt nyomva, elég nullázni és élesítve hagyni,
-// hogy egy egyszerű ablakváltás (pl. az SSH-terminálra kattintás) ne kényszerítsen újra-élesítést.
+// Fókuszvesztéskor csak akkor kell teljes leélesítés, ha épp ténylegesen ment a robot
+// (pressed nem üres) — ilyenkor a keyup elveszhet. Ha semmi nem volt nyomva, elég nullázni és
+// élesítve hagyni, hogy egy egyszerű ablakváltás ne kényszerítsen újra-élesítést.
 window.addEventListener('blur', () => {
   if (!armed) return;
   if (pressed.size > 0) setArmed(false, 'az ablak elvesztette a fókuszt vezérlés közben (biztonsági leállás)');
@@ -599,42 +1383,29 @@ document.addEventListener('visibilitychange', () => {
 // rate-limitelt tick — ugyanaz a logika, mint xavier_control/base_drive.py TeleopRateLimiter-je
 setInterval(() => {
   releaseStaleKeys();
-  const dtScale = TICK_MS / 100; // referencia: 100ms/tick
+  const dtScale = TICK_MS / 100;
   current.x += clamp(target.x - current.x, MAX_LINEAR_ACCEL_PER_TICK * dtScale);
   current.y += clamp(target.y - current.y, MAX_LINEAR_ACCEL_PER_TICK * dtScale);
   current.az += clamp(target.az - current.az, MAX_ANGULAR_ACCEL_PER_TICK * dtScale);
   updateReadout();
-
-  // Felhasználói kérésre (2026-09-22) az inaktivitás-alapú automatikus leélesítés ki lett véve:
-  // most már csak akkor élesítődik le, ha ténylegesen vezérlés közben szakad meg valami
-  // (fókuszvesztés nyomott gombbal), a webes megállítás gombbal, vagy kézzel. Az ARM_TIMEOUT_MS
-  // értéket ezért itt nem használjuk; a fizikai leállító és a webes megállítás marad az utolsó védelem.
-
-  // Élesítve a nulla parancsot is periodikusan küldjük. A webes megállítás
-  // továbbra is hálózatfüggő, ezért nem tekinthető fizikai vészleállítónak.
   if (armed) publishTwist();
 }, TICK_MS);
 
 updateReadout();
 log('mock', "vezérlőpult betöltve — bázis: nincs élesítve, kar: mindig szimuláció");
 
-
 // ================= TELEMETRIA — CSAK OLVASÁS =================
-// Ez a szekció semmit nem publikál. Az /odom és /imu üzenetek 10 Hz-re ritkítva jönnek, hogy a Wi-Fit ne terheljék.
-// A tényleges forgási sebesség a fizikai távirányítóval végzett mozgásnál is látszik, ezért a webes csúszka
-// helyett ez jelzi, ha a robot gyorsabban fordul, mint amit a térképezés elbír. A határ becslés (lásd fent).
 const TELE_STALE_MS = 3000;
 // Akku (a címke szerint): 6000 mAh, 134,4 Wh, 22,4 V névleges, 25,55 V töltési véghatár, 6 cella, 15 A max. kisütés.
-// A százalék a 6 cella átlagfeszültségéből számolt BECSLÉS (tipikus Li-ion/LiPo kisülési görbe, a felső pont 4,25 V/cella
-// a 25,55 V töltési határhoz igazítva). Terhelés alatt a feszültség lesüllyed, ezért mozgás közben alacsonyabbat mutat.
+// A százalék a 6 cella átlagfeszültségéből számolt BECSLÉS.
 const BATTERY_CELLS = 6;
-const BATTERY_CURVE = [ // [V/cella, %]
+const BATTERY_CURVE = [
   [3.27, 0], [3.61, 5], [3.69, 10], [3.71, 15], [3.73, 20], [3.75, 25], [3.77, 30], [3.79, 35], [3.80, 40],
   [3.82, 45], [3.84, 50], [3.85, 55], [3.87, 60], [3.91, 65], [3.95, 70], [3.98, 75], [4.02, 80], [4.08, 85],
   [4.11, 90], [4.15, 95], [4.25, 100],
 ];
-const BATTERY_WARN_V = 22.2;   // ~15% (3,70 V/cella); becslés
-const BATTERY_BAD_V = 21.6;    // ~5% (3,60 V/cella); becslés. 2026-09-18-án 17,74 V-nál a szervók elengedtek
+const BATTERY_WARN_V = 22.2;
+const BATTERY_BAD_V = 21.6;
 function batteryPercent(packV) {
   const c = packV / BATTERY_CELLS;
   if (c <= BATTERY_CURVE[0][0]) return 0;
@@ -658,14 +1429,13 @@ function setTile(id, cls, value, sub) {
 }
 function finite(v) { return typeof v === 'number' && isFinite(v); }
 
-// A /PowerVoltage üzenettípusát szándékosan nem adjuk meg: a rosbridge felismeri; a mezőt a kód ellenőrzi.
 const batteryTopic = new ROSLIB.Topic({ ros, name: '/PowerVoltage', throttle_rate: 500, queue_length: 1 });
 batteryTopic.subscribe((m) => {
   const v = m && (finite(m.data) ? m.data : null);
   if (v === null) return;
   tele.battery = v; tele.batteryAt = Date.now();
   tele.batteryHist.push(v);
-  if (tele.batteryHist.length > 20) tele.batteryHist.shift();   // ~10 s, a terhelési ingadozás simítására
+  if (tele.batteryHist.length > 20) tele.batteryHist.shift();
 });
 const odomTopic = new ROSLIB.Topic({ ros, name: '/odom', messageType: 'nav_msgs/Odometry', throttle_rate: 100, queue_length: 1 });
 odomTopic.subscribe((m) => {
@@ -690,8 +1460,7 @@ function renderTelemetry() {
     const pct = Math.round(batteryPercent(smooth));
     const cls = smooth < BATTERY_BAD_V ? 'bad' : (smooth < BATTERY_WARN_V ? 'warn' : 'ok');
     setTile('teBattery', cls, `≈ ${pct}% · ${v.toFixed(2)} V`,
-      (cls === 'ok' ? '' : 'alacsony akku — töltsd, mielőtt a robot mozog · ') +
-      'becsült töltöttség 6 cellás akkuhoz; mozgás közben kevesebbet mutat');
+      (cls === 'ok' ? '' : 'alacsony akku — töltsd, mielőtt a robot mozog · ') + 'becsült töltöttség');
   } else {
     setTile('teBattery', 'stale', '—', 'nincs friss adat');
   }
@@ -699,7 +1468,7 @@ function renderTelemetry() {
   if (tele.odom && fresh(tele.odomAt)) {
     const lin = Math.hypot(tele.odom.x, tele.odom.y);
     setTile('teSpeed', 'ok', lin.toFixed(2) + ' m/s',
-      `x ${tele.odom.x.toFixed(2)} · y ${tele.odom.y.toFixed(2)} m/s (kerékodometria)`);
+      `x ${tele.odom.x.toFixed(2)} · y ${tele.odom.y.toFixed(2)} m/s`);
   } else {
     setTile('teSpeed', 'stale', '—', 'nincs friss adat');
   }
@@ -717,8 +1486,7 @@ function renderTelemetry() {
     if (haveOdom) parts.push(`odom ${tele.odom.az.toFixed(2)}`);
     if (haveImu) parts.push(`IMU ${tele.imuZ.toFixed(2)}`);
     setTile('teTurn', cls, peak.toFixed(2) + ' rad/s (max 5 s)',
-      over ? `⚠ gyors fordulás: a térkép szétcsúszhat (határ ~${ANGULAR_MAP_WARN_RADPS.toFixed(1)}, becslés) · ${parts.join(' · ')}`
-           : parts.join(' · ') + ' rad/s');
+      over ? `⚠ gyors fordulás · ${parts.join(' · ')}` : parts.join(' · ') + ' rad/s');
     if (over && now - tele.lastTurnWarn > 5000) {
       tele.lastTurnWarn = now;
       log('mock', `Figyelem: mért forgás ${peak.toFixed(2)} rad/s — a térképezés szétcsúszhat`);
@@ -732,9 +1500,7 @@ setInterval(renderTelemetry, 300);
 renderTelemetry();
 
 // ================= KAR + GRIPPER — MINDIG SZIMULÁCIÓ =================
-// Ez a szekció szándékosan SOHA nem hív rosbridge-et. A csúszkák csak a
-// naplóba írnak, pontosan úgy, mint xavier_control/arm_control.py mock
-// szenderéé — lásd docs/08-kezi-vezerles.md, miért marad ez mock-only.
+// Ez a szekció szándékosan SOHA nem hív rosbridge-et — lásd docs/08-kezi-vezerles.md.
 ['j0','j1','j2'].forEach((id) => {
   const slider = document.getElementById(id);
   const val = document.getElementById(id + 'v');
@@ -745,6 +1511,11 @@ renderTelemetry();
 });
 document.getElementById('gripOpen').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper NYIT parancs (nincs valós küldés, csak napló)"));
 document.getElementById('gripClose').addEventListener('click', () => log('sim', "SZIMULÁCIÓ — gripper ZÁR parancs (nincs valós küldés, csak napló)"));
+
+// A kis/nagy nézet induló beállítása csak itt, a szkript végén történik — ekkorra minden
+// szenzorhoz tartozó const (c70ImgThumb, rgbImgThumb stb.) már létezik, tehát a
+// refreshC70ThumbFeed()/refreshRgbFeed() hívások (setBigSensor belsejéből) biztonságosak.
+setBigSensor('tileC70'); // alapból a C70 a nagy nézet
 </script>
 </body>
 </html>

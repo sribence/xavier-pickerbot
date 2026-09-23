@@ -26,11 +26,11 @@ Egyéb kapcsolók: `-NoBrowser` (nem nyit böngészőablakot), `-DashboardOnly` 
 
 Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájljai és magyar nyelvű dokumentációja itt található. A Unitree Go2 külön projektben van.
 
-**Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Itt a C70 kép, a valódi `/map` és a bázisvezérlés együtt látszik. `-DashboardOnly` kapcsolóval a teljes szenzornézet nyílik meg. A roboton automatikusan futó 8901-es weboldal egy korábban telepített változat; a repó HTML-fájljai nem kerülnek oda pusztán a Git commit vagy push hatására. A webes megállítás nem helyettesíti a fizikai vészleállítót, a kar panelje továbbra is csak szimuláció.
+**Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Ez EGYETLEN oldal: a C70 és hátsó kamerák, a valódi `/map`, az IR-panel, a LiDAR felülnézet, a 3D pontfelhő és a bázisvezérlés is itt van (a korábbi külön `dashboard.html` 2026-09-24-én megszűnt, minden funkciója átkerült ide). A roboton automatikusan futó 8901-es weboldal egy korábban telepített változat; a repó HTML-fájljai nem kerülnek oda pusztán a Git commit vagy push hatására. A webes megállítás nem helyettesíti a fizikai vészleállítót, a kar panelje továbbra is csak szimuláció.
 
 **2026-09-21:** a térkép újrakezdése gombot a felhasználó kipróbálta. Az USB Wi-Fi bizonytalan kapcsolata miatt a robot beépített Intel Wi-Fi-jét a TP-Link routerhez kapcsoltuk. Kontrollált, lekapcsolt Ethernet és USB Wi-Fi mellett a robot `.50` címén SSH, valamint a bemutatóoldalon kamera és kezdetben változó térkép működött. A próba végén az Ethernet visszaállt, a beépített Wi-Fi csatlakozva maradt. Hosszabb ellenőrzéskor a `/map` új üzenetei megszűntek, ezt külön kell kivizsgálni. Valódi kábelkihúzás és kábel nélküli újraindítás még nincs igazolva. Részletek: [munkamenet-átadás](docs/11-munkamenet-atadas.md), [hálózat](docs/09-robot-halozat.md).
 
-**Két fejlesztési felület:** a `scripts/control_panel.html` a Kutatók Éjszakája bemutatóoldala, ezen dolgozunk először. A `scripts/dashboard.html` a részletes műszaki szenzornézet, ezt később bővítjük. Az aktuális reboot utáni állapotot a [munkamenet-átadás](docs/11-munkamenet-atadas.md) tartalmazza.
+**Egyetlen fejlesztési felület:** a `scripts/control_panel.html` a Kutatók Éjszakája bemutatóoldala, ez tartalmaz mindent (kamerák, térkép, IR, LiDAR, 3D pontfelhő, bázis+kar vezérlés). A korábbi külön `scripts/dashboard.html` 2026-09-24-én megszűnt. Az aktuális reboot utáni állapotot a [munkamenet-átadás](docs/11-munkamenet-atadas.md) tartalmazza.
 
 ## Tartalomjegyzék
 

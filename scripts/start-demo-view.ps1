@@ -1,4 +1,4 @@
-﻿param([switch]$NoBrowser, [switch]$DashboardOnly)
+﻿param([switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 
 $accessDir = Join-Path $env:USERPROFILE 'Documents\Codex\pickerbot-access'
@@ -6,11 +6,9 @@ $key = Join-Path $accessDir 'pickerbot_mini'
 $knownHosts = Join-Path $accessDir 'known_hosts'
 $stateFile = Join-Path $env:TEMP 'pickerbot-demo-view.json'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$url = if ($DashboardOnly) {
-    'http://127.0.0.1:8902/scripts/dashboard.html'
-} else {
-    'http://127.0.0.1:8902/scripts/control_panel.html'
-}
+# A dashboard.html 2026-09-24-én megszűnt — minden szenzor (kamerák, térkép, IR, LiDAR
+# felülnézet, 3D pontfelhő) a control_panel.html-be került, tehát csak egy URL van.
+$url = 'http://127.0.0.1:8902/scripts/control_panel.html'
 
 if (-not (Test-Path -LiteralPath $knownHosts)) {
     throw 'A Pickerbot known_hosts fájl hiányzik.'
