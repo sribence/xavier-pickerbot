@@ -12,7 +12,7 @@
 |---|---|---|
 | Bázis (mecanum) Twist-építő + rate-limiter | [scripts/xavier_control/base_drive.py](../scripts/xavier_control/base_drive.py) | **valós-képes** — de csak ha valaki ténylegesen bekötné egy publish hívásba; a modul maga csak dict-eket épít |
 | Kar/gripper mock sender | [scripts/xavier_control/arm_control.py](../scripts/xavier_control/arm_control.py) | **MOCK-ONLY** — szándékosan nem tud valós ROS API-t hívni |
-| Webes vezérlőpult | [scripts/control_panel.html](../scripts/control_panel.html) | bázis: valós `/cmd_vel` publish, de ÉLESÍTÉS-kapu mögött, alapból KI; kar: mindig szimuláció |
+| Webes vezérlőpult | [scripts/control_panel.html](../scripts/control_panel.html) | bázis: valós `/cmd_vel`; kar/gripper: valós `/arm_cmd`; mindkettő külön élesítés mögött, alapból KI |
 | Unit tesztek | `scripts/xavier_control/tests/test_base_drive.py`, `test_arm_control.py` | 25/25 zöld (`python -m pytest tests/` a `xavier_control/` mappában) |
 
 ## Valós-képes vs. mock-only — és miért ez a különbség
@@ -21,11 +21,11 @@
 - Ez a Wheeltec `turn_on_wheeltec_robot` alap-driver saját, jól dokumentált konvenciója, amit a gyári `wheeltec_joy_control` package is használ.
 - Egy Twist (linear.x/y, angular.z) formátumhoz nem kell ízület-szintű geometriai adat, ami hiányzik — csak sebesség-parancs.
 
-**A kar mock-only marad.** A `/arm_cmd` topic és a gripper konvenciója már ismert, de az alsó vezérlő nem küld vissza mért karpozíciót. Minden parancs négy értéket tartalmaz, ezért egy grippermódosítás is új célra küldheti mindhárom kartengelyt. A 2026-09-19-i darálás és sípolás mellett ez nem kapcsolható biztonságosan élőre.
+**A kar webes küldése 2026-09-23 óta élőre beköthető.** A felhasználó kérésére a kezelő felügyeli a mozgást. A `/arm_cmd` topic és a gripper konvenciója ismert, de az alsó vezérlő nem küld vissza mért karpozíciót. Minden parancs négy értéket tartalmaz, ezért egy grippermódosítás is újraküldi mindhárom kartengely célját.
 - A gripper gyári tartománya `0..100`: `0 = nyitva`, `100 = zárva`, a gyári kézi vezérlő lépése `5`.
 - A biztonságos karfelület nem abszolút csúszkákat használ, hanem a gyári kódhoz illeszkedő kis lépéses gombokat: talp ±0,02 rad; karvég X/Y ±0,01 m; gripper ±5.
-- A gombos modell a gyári ízületi és munkatérkorlátokat ellenőrzi, de élő küldéshez előbb ismert fizikai alaphelyzet és a hibás ízület átvizsgálása kell.
-- A modul szerkezetileg (import-szint, AST-teszt) így is nem tud valós ROS API-t elérni — a valós küldés bekötése külön, tudatos következő lépés.
+- A gombos modell a gyári ízületi és munkatérkorlátokat ellenőrzi. A weboldal külön `KAR ÉLESÍTÉS` után publikál; a Python `arm_control.py` modul továbbra is mock-only.
+- Oldalbetöltés, ROS-újracsatlakozás, bázisélesítés és a parancsmodell alaphelyzetbe állítása nem küld `/arm_cmd` üzenetet.
 
 ## A biztonsági plafonok pontos értékei és miért ilyenek
 
@@ -55,9 +55,9 @@ Olvasó jellegű robotvizsgálattal, mozgásparancs nélkül ellenőrizve:
 - A gripper skálája biztosan `0..100`; a gyári automata pick kód `100` értékkel zár és `0` értékkel nyit.
 - A vezérlő soros visszajelző csomagja csak alvázsebességet, IMU-adatot és akkufeszültséget tartalmaz. Valódi ízületi pozíció vagy szervóhiba nem érkezik vissza.
 - A ROS `/joint_states` karértékei nullák és modelladatok, nem szenzormérések.
-- Emiatt az abszolút csúszkás vezérlés elvetve. A webes panel kis lépéses, gyári kinematikát követő gombokra lett átalakítva, de továbbra sem publikál `/arm_cmd` üzenetet.
+- Emiatt az abszolút csúszkás vezérlés elvetve. A webes panel kis lépéses, gyári kinematikát követő gombokat használ, és külön kar-élesítés után publikál `/arm_cmd` üzenetet.
 
-**Az élő bekapcsolás feltételei:** az érintett ízület áramtalanított mechanikai átvizsgálása; reprodukálható és fizikailag igazolt alaphelyzet; felügyelt egytengelyes próba 0,02 rad lépésekkel; ezután külön kar-élesítés és parancsidőkorlát kialakítása. A gripper első élő próbája is csak ezután végezhető, mert a gripperparancs három ízületi célt is tartalmaz.
+**Élő használat:** a karpanel `KAR ÉLESÍTÉS` gombja független a bázis élesítésétől. Egy kattintás vagy billentyű pontosan egy parancsot küld. Magyar QWERTZ billentyűk: `C/V` talp balra/jobbra; `R/F` karvég előre/hátra; `T/G` fel/le; `H/J` gripper nyit/zár. A parancsmodell alaphelyzete `[0, 1.570796, 0.391797, 0]`; az első élő lépés ebből indul.
 
 ## Első élő teszt — lépésről lépésre (amikor a robot legközelebb elérhető)
 
@@ -157,6 +157,6 @@ Olvasó jellegű vizsgálat történt, mozgásparancs nélkül:
 - A `wheeltec_robot.cpp` destruktora szabályos leálláskor a bázisnak nulla sebességet, majd a karnak `[0, 1.5707, 0.3917, 0]` célt küld. A második ízület 1,5707 rad célja nagyobb, mint a betöltött `mini_mec_moveit_four.urdf` ±0,785 rad határa. Nem bizonyított, hogy a robot újraindításakor ez a kódrész ténylegesen végrehajtódott, illetve hogy a modellhatár megfelel-e a fizikai határnak. Emiatt **ne állítsuk le vagy indítsuk újra próbaképpen a bringupot** a kar mechanikai ellenőrzése előtt. A gyári fájlt nem módosítottuk.
 - A régi `/home/wheeltec/arm_jog.py` induláskor azonnal elküldi a `[0.05, 0, 0, 0]` célt, miközben a valós kezdőpozíciót nem tudja lekérdezni. Ezt az eszközt most ne indítsuk el.
 
-Webes, valóban működő karvezérléshez előbb az érintett fel-le ízület állapotát és a gyári joystick/alsó vezérlő útját kell tisztázni. Utána a három parancsolt ízület valós nullahelyét és biztonságos fizikai tartományát, valamint a megfogó konvencióját kell egyenként megerősíteni. A jelenlegi `control_panel.html` kar része szándékosan csak szimuláció; élő gombok hozzáadása a mostani, visszajelzés nélküli állapotban újabb végállásnak feszítést okozhatna.
+Ez a 2026-09-19-i megállapítás történeti állapot. A felhasználó 2026-09-23-án kezelői felügyelettel kérte az élő bekötést; a `control_panel.html` azóta külön kar-élesítéssel, kis lépéses gombokkal és billentyűkkel publikál a `/arm_cmd` témára.
 
 A teljesítményről ugyanebben a vizsgálatban: a C70 ROS-forrása kb. 15 kép/s sebességgel publikált, míg a `/map` kb. 0,8–1 üzenet/s sebességgel frissült. A laptop helyi MJPEG-alagútja nem válaszolt, ezért a dashboard a nagyobb késleltetésű nyers ROS-képet használta. A `pickerbot-slam` konténer kb. 32% CPU-t használt, 5,2 GiB memória rendelkezésre állt. A kamera megjelenítési késése és a térkép frissítési sebessége külön optimalizálási feladat; nem magyarázza a kar mechanikai hangját.

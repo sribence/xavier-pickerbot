@@ -285,6 +285,15 @@
     color:var(--muted); background:var(--surface); font-size:0.62rem; line-height:1.45;
   }
   .arm-reset { width:100%; margin-top:0.4rem; color:var(--muted); }
+  .arm-live-controls { display:flex; flex-direction:column; gap:0.3rem; margin-top:0.55rem; }
+  .arm-live-controls button {
+    font-family:inherit; padding:0.55rem; border-radius:7px; border:1px solid var(--bad);
+    background:#2a1414; color:var(--bad); cursor:pointer; font-weight:700;
+  }
+  .arm-live-controls button.armed { background:var(--bad); color:#1a0e0e; }
+  .arm-live-controls button:disabled { opacity:0.5; cursor:not-allowed; }
+  .arm-live-state { color:var(--muted); font-size:0.62rem; line-height:1.35; }
+  .arm-live-state.armed-label { color:var(--bad); font-weight:700; }
 
   .telemetry { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0.6rem; margin-bottom:0.8rem; }
   .tele { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:0.5rem 0.7rem; min-width:0; }
@@ -309,7 +318,7 @@
     </label>
     rácsnézet
   </span>
-  <a href="../docs/08-kezi-vezerles.md" target="_blank" title="Kar = csak szimuláció. Vészhelyzetben a fizikai leállítót használd.">⚠ részletek</a>
+  <a href="../docs/08-kezi-vezerles.md" target="_blank" title="A kar külön élesíthető. Vészhelyzetben a fizikai leállítót használd.">⚠ részletek</a>
 </header>
 
 <div class="stage">
@@ -493,38 +502,41 @@
 
       <div class="panel arm-panel">
         <div class="panel-head">
-          <span>Kar + gripper előkészítés</span>
-          <span class="tag sim">ÉLŐ ZÁROLVA</span>
+          <span>Kar + gripper vezérlés</span>
+          <span class="tag sim" id="armLiveTag">NINCS ÉLESÍTVE</span>
         </div>
         <div class="panel-body">
           <div class="arm-lock">
-            <b>Nincs valódi karpozíció-visszajelzés.</b> A gyári vezérlő minden gripperparanccsal
-            újraküldi a három karízület célját is. A gombok ezért most csak a korlátozott
-            parancsmodellt próbálják ki; a robotkar nem mozdul.
+            Az élő parancs a gyári alaphelyzetből indul. Élesítés nélkül a gombok csak a
+            parancsmodellt frissítik; kar-élesítés után minden kattintás vagy billentyű egy lépést küld.
           </div>
 
-          <div class="arm-jog-title">Talpforgatás · 0,02 rad / kattintás</div>
+          <div class="arm-jog-title">Talpforgatás · 0,02 rad / kattintás · C / V</div>
           <div class="arm-jog-grid">
-            <button id="armBaseLeft">↶ BALRA</button>
-            <button id="armBaseRight">JOBBRA ↷</button>
+            <button id="armBaseLeft">↶ BALRA [C]</button>
+            <button id="armBaseRight">JOBBRA [V] ↷</button>
           </div>
 
           <div class="arm-jog-title">Karvég · 1 cm / kattintás, gyári munkatérkorláttal</div>
           <div class="arm-jog-grid">
-            <button id="armBack">← HÁTRA</button>
-            <button id="armForward">ELŐRE →</button>
-            <button id="armDown">↓ LE</button>
-            <button id="armUp">FEL ↑</button>
+            <button id="armBack">← HÁTRA [F]</button>
+            <button id="armForward">ELŐRE [R] →</button>
+            <button id="armDown">↓ LE [G]</button>
+            <button id="armUp">FEL [T] ↑</button>
           </div>
 
           <div class="arm-jog-title">Gripper · gyári 0…100 skála, 5 / kattintás</div>
           <div class="gripper-row">
-            <button id="gripOpen">NYIT (−5)</button>
-            <button id="gripClose">ZÁR (+5)</button>
+            <button id="gripOpen">NYIT [H] (−5)</button>
+            <button id="gripClose">ZÁR [J] (+5)</button>
           </div>
 
           <div class="arm-sim-readout" id="armSimReadout"></div>
-          <button class="arm-reset" id="armSimReset">Szimulált alaphelyzet visszaállítása</button>
+          <button class="arm-reset" id="armSimReset">Parancsmodell alaphelyzetbe</button>
+          <div class="arm-live-controls">
+            <button id="armLiveBtn" disabled>KAR ÉLESÍTÉS</button>
+            <span class="arm-live-state" id="armLiveState">nincs élesítve — csak modell</span>
+          </div>
         </div>
       </div>
     </div>
@@ -561,6 +573,7 @@ ros.on('connection', () => {
   statusEl.textContent = "rosbridge: csatlakozva";
   statusEl.className = "ok";
   document.getElementById('armBtn').disabled = false;
+  document.getElementById('armLiveBtn').disabled = false;
   // Újracsatlakozáskor a korábbi feliratkozások elveszhetnek — friss feliratkozás a térképre.
   mapTopic.unsubscribe();
   mapTopic.subscribe(drawMap);
@@ -569,7 +582,9 @@ function lostConnection(label) {
   statusEl.textContent = label;
   statusEl.className = "err";
   document.getElementById('armBtn').disabled = true;
+  document.getElementById('armLiveBtn').disabled = true;
   if (armed) setArmed(false, 'a rosbridge-kapcsolat megszakadt');
+  if (armLiveArmed) setArmLiveArmed(false, 'a rosbridge-kapcsolat megszakadt');
   scheduleRosReconnect();
 }
 ros.on('error', () => lostConnection("rosbridge hiba — bázis leélesítve"));
@@ -1560,7 +1575,7 @@ setInterval(() => {
 }, TICK_MS);
 
 updateReadout();
-log('mock', "vezérlőpult betöltve — bázis: nincs élesítve, kar: mindig szimuláció");
+log('mock', "vezérlőpult betöltve — bázis és kar nincs élesítve");
 
 // ================= TELEMETRIA — CSAK OLVASÁS =================
 const TELE_STALE_MS = 3000;
@@ -1667,12 +1682,11 @@ function renderTelemetry() {
 setInterval(renderTelemetry, 300);
 renderTelemetry();
 
-// ================= KAR + GRIPPER — KORLÁTOZOTT PARANCSMODELL, ÉLŐ KÜLDÉS NÉLKÜL =================
+// ================= KAR + GRIPPER — KORLÁTOZOTT ÉLŐ /arm_cmd VEZÉRLÉS =================
 // A gyári stepper_arm forrásból ellenőrzött adatok (2026-09-23):
 //   /arm_cmd = [j1_rad, j2_rad, j3_rad, gripper_0_100], 0=nyitva, 100=zárva.
-// Az alsó vezérlő NEM ad vissza valódi karpozíciót. Egy gripperparancs is újraküldi mindhárom
-// ízületi célt, ezért még a gripper sem kapcsolható élőre ismert/szinkronizált karpozíció nélkül.
-// A felület szándékosan nem tartalmaz ROSLIB.Topic('/arm_cmd') publishert.
+// A felhasználó kérésére a webes gombok a gyári alaphelyzetből induló parancsmodellt küldik ki.
+// A bázisélesítéstől független KAR ÉLESÍTÉS szükséges; oldalbetöltéskor semmi nem megy ki.
 const ARM_JOINT_STEP = 0.02;
 const ARM_EE_STEP = 0.01;
 const ARM_GRIP_STEP = 5;
@@ -1692,6 +1706,46 @@ const ARM_WORKSPACE_ARCS = [
 ];
 const ARM_SIM_HOME = Object.freeze({ q: [0.0, 1.570796, 0.391797], x: 0.062, y: -0.008, grip: 0 });
 let armSim = { q: [...ARM_SIM_HOME.q], x: ARM_SIM_HOME.x, y: ARM_SIM_HOME.y, grip: ARM_SIM_HOME.grip };
+let armLiveArmed = false;
+const armCmdTopic = new ROSLIB.Topic({
+  ros, name: '/arm_cmd', messageType: 'std_msgs/Float32MultiArray'
+});
+
+function setArmLiveArmed(value, reason) {
+  if (value && !ros.isConnected) {
+    log('mock', 'Nincs ROS-kapcsolat — a kar nem élesíthető');
+    return;
+  }
+  armLiveArmed = value;
+  const btn = document.getElementById('armLiveBtn');
+  const state = document.getElementById('armLiveState');
+  const tag = document.getElementById('armLiveTag');
+  btn.classList.toggle('armed', armLiveArmed);
+  btn.textContent = armLiveArmed ? 'KAR LEÉLESÍTÉS' : 'KAR ÉLESÍTÉS';
+  tag.classList.toggle('live', armLiveArmed);
+  tag.classList.toggle('sim', !armLiveArmed);
+  tag.textContent = armLiveArmed ? 'ÉLŐ /ARM_CMD' : 'NINCS ÉLESÍTVE';
+  state.textContent = armLiveArmed ? 'ÉLESÍTVE — egy kattintás vagy billentyű egy parancsot küld' : 'nincs élesítve — csak modell';
+  state.classList.toggle('armed-label', armLiveArmed);
+  log(armLiveArmed ? 'sent' : 'mock', armLiveArmed ? 'KAR ÉLESÍTVE' : 'kar leélesítve' + (reason ? ' (' + reason + ')' : ''));
+}
+
+function publishArmCommand(label) {
+  if (!armLiveArmed) {
+    log('sim', 'MODELL — ' + label + '; a kar nincs élesítve');
+    return;
+  }
+  if (!ros.isConnected) {
+    setArmLiveArmed(false, 'nincs ROS-kapcsolat');
+    return;
+  }
+  const data = [armSim.q[0], armSim.q[1], armSim.q[2], armSim.grip];
+  armCmdTopic.publish(new ROSLIB.Message({
+    layout: { dim: [], data_offset: 0 },
+    data
+  }));
+  log('sent', '/arm_cmd <- [' + data.map(v => Number(v).toFixed(3)).join(', ') + '] · ' + label);
+}
 
 function armInsideWorkspace(x, y) {
   const count = y > 0 ? 4 : 5;
@@ -1740,7 +1794,7 @@ function armSimBase(delta, label) {
   if (next < ARM_LIMITS[0][0] || next > ARM_LIMITS[0][1]) return armSimRejected(label);
   armSim.q[0] = next;
   renderArmSim();
-  log('sim', 'SZIMULÁCIÓ — ' + label + '; élő karparancs nem ment ki');
+  publishArmCommand(label);
 }
 function armSimMove(dx, dy, label) {
   const x = armSim.x + dx, y = armSim.y + dy;
@@ -1751,12 +1805,12 @@ function armSimMove(dx, dy, label) {
   armSim.x = x;
   armSim.y = y;
   renderArmSim();
-  log('sim', 'SZIMULÁCIÓ — ' + label + '; élő karparancs nem ment ki');
+  publishArmCommand(label);
 }
 function armSimGrip(delta, label) {
   armSim.grip = Math.max(0, Math.min(100, armSim.grip + delta));
   renderArmSim();
-  log('sim', 'SZIMULÁCIÓ — ' + label + ': ' + armSim.grip + '/100; élő karparancs nem ment ki');
+  publishArmCommand(label + ': ' + armSim.grip + '/100');
 }
 document.getElementById('armBaseLeft').addEventListener('click', () => armSimBase(-ARM_JOINT_STEP, 'talp balra'));
 document.getElementById('armBaseRight').addEventListener('click', () => armSimBase(ARM_JOINT_STEP, 'talp jobbra'));
@@ -1769,7 +1823,24 @@ document.getElementById('gripClose').addEventListener('click', () => armSimGrip(
 document.getElementById('armSimReset').addEventListener('click', () => {
   armSim = { q: [...ARM_SIM_HOME.q], x: ARM_SIM_HOME.x, y: ARM_SIM_HOME.y, grip: ARM_SIM_HOME.grip };
   renderArmSim();
-  log('sim', 'SZIMULÁCIÓ — gyári parancsmodell alaphelyzete visszaállítva; élő karparancs nem ment ki');
+  log('sim', 'A parancsmodell alaphelyzetbe állt; ez a gomb nem küldött /arm_cmd parancsot');
+});
+document.getElementById('armLiveBtn').addEventListener('click', () => setArmLiveArmed(!armLiveArmed, 'kézi leélesítés'));
+
+// A bázis W/A/S/D/Q/E billentyűitől külön kar-kiosztás. Egy keydown pontosan egy lépés;
+// az operációs rendszer billentyűismétlése nem küld további parancsokat.
+const ARM_KEYMAP = {
+  c: 'armBaseLeft', v: 'armBaseRight',
+  f: 'armBack', r: 'armForward', g: 'armDown', t: 'armUp',
+  h: 'gripOpen', j: 'gripClose'
+};
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
+  const id = ARM_KEYMAP[e.key.toLowerCase()];
+  if (!id) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  document.getElementById(id).click();
 });
 renderArmSim();
 

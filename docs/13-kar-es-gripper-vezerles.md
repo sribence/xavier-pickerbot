@@ -46,29 +46,42 @@ A gyári modell ezen felül öt körívvel korlátozza a karvég munkaterét. Ez
 
 Az URDF mindhárom ízületre ±0,785 rad határt tartalmaz, ami eltér a gyári `stepper_arm` vezérlő modelljétől. Ezt az ellentmondást élő vezérlés előtt fizikailag kell tisztázni; egyik tartományt sem szabad automatikusan mechanikai végállásként kezelni.
 
-## Elkészült webes felület
+## Elkészült élő webes felület
 
 A [control_panel.html](../scripts/control_panel.html) karpanelje:
 
 - eltávolította az abszolút szögcsúszkákat;
-- talp balra/jobbra gombot ad 0,02 rad szimulált lépéssel;
-- a karvéget előre/hátra/fel/le mozgatja 1 cm-es szimulált lépéssel;
+- talp balra/jobbra gombot ad 0,02 rad lépéssel;
+- a karvéget előre/hátra/fel/le mozgatja 1 cm-es lépéssel;
 - ellenőrzi a gyári inverz kinematikát, ízületi és munkatérkorlátokat;
-- a grippert 5-ös lépésekben szimulálja a valós `0..100` skálán;
-- jól láthatóan jelzi, hogy az élő vezérlés zárolva van;
-- nem hoz létre `/arm_cmd` publishert és nem küld parancsot a robotnak.
+- a grippert 5-ös lépésekben vezérli a valós `0..100` skálán;
+- külön `KAR ÉLESÍTÉS` gombot használ, a bázis élesítésétől függetlenül;
+- élesítés után minden kattintás vagy billentyű pontosan egy `/arm_cmd` üzenetet küld;
+- oldalbetöltéskor, újracsatlakozáskor és a parancsmodell visszaállításakor nem küld automatikus karcélt.
+
+Billentyűzet:
+
+| Billentyű | Művelet |
+|---|---|
+| `C` / `V` | talp balra / jobbra |
+| `R` / `F` | karvég előre / hátra |
+| `T` / `G` | karvég fel / le |
+| `H` / `J` | gripper nyit / zár |
+
+A billentyűismétlés figyelmen kívül marad: egy fizikai lenyomás egy lépést küld.
 
 Az [arm_control.py](../scripts/xavier_control/arm_control.py) mock sender grippermodellje szintén a valós `0..100` tartományra frissült. A Python modul továbbra sem importál ROS-klienskönyvtárat és nem tud élő parancsot küldeni.
 
-## Az élő bekapcsolás szükséges sorrendje
+## Élő használat
 
-1. A daráló/sípoló fel-le ízületet áramtalanítva mechanikailag át kell vizsgálni.
-2. Meg kell határozni egy reprodukálható fizikai alaphelyzetet, amelyhez ismert numerikus j1/j2/j3 cél tartozik.
-3. Fizikai leállításra kész kezelő mellett, megtámasztott karral egyenként kell igazolni a mozgásirányokat 0,02 rad lépéssel.
-4. Ellenőrizni kell a gyári kód és az URDF eltérő határait a valódi mechanikai tartományhoz képest.
-5. Csak ezután készülhet külön kar-élesítésű `/arm_cmd` publisher. A weboldal betöltése, ROS-újracsatlakozás vagy bázisélesítés nem küldhet automatikus karcélt.
-6. A gripper első élő próbája is csak a kar célállapotának szinkronizálása után történhet.
+1. Nyisd meg a `control_panel.html` oldalt, és ellenőrizd a `rosbridge: csatlakozva` állapotot.
+2. A karpanel `KAR ÉLESÍTÉS` gombjával külön élesítsd a kart.
+3. Használd a gombokat vagy a fenti billentyűket. Minden művelet egy kis lépést küld.
+4. A `Parancsmodell alaphelyzetbe` gomb csak a böngésző célállapotát állítja vissza, nem mozgatja a robotot.
+5. Leélesítéshez kattints a `KAR LEÉLESÍTÉS` gombra. A bázis webes megállítása nem változtatja a kar célhelyzetét.
+
+A parancsmodell induló értéke `[0, 1.570796, 0.391797, 0]`. Mivel nincs mért ízületi visszajelzés, az első parancs is ebből a gyári alaphelyzetből számított célt küld. A felhasználó kérésére a kezelő fizikailag figyeli a kart.
 
 ## Átadási állapot
 
-A gombos kezelőfelület és a korlátozó modell elkészült és offline ellenőrizhető. Az élő vezérlés szándékosan nincs bekapcsolva. A következő ágens ne adjon ki `/arm_cmd` üzenetet, és ne indítsa el a roboton maradt régi `/home/wheeltec/arm_jog.py` fájlt addig, amíg a mechanikai ellenőrzés és az alaphelyzet igazolása nem történt meg.
+A gombos kezelőfelület, a korlátozó modell, a külön kar-élesítés, a `/arm_cmd` publisher és a billentyűzetes vezérlés elkészült. A robotra telepített 8901-es oldal és a helyi 8902-es fejlesztői oldal ugyanazt a fájlt használja a telepítés után. A régi `/home/wheeltec/arm_jog.py` használata nem szükséges.

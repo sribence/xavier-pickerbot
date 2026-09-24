@@ -284,6 +284,16 @@ Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó j
 - Élő `/arm_cmd` publisher továbbra sincs. A daráló/sípoló ízület mechanikai átvizsgálása és egy igazolt alaphelyzet nélkül ne kapcsold be.
 - Részletes átadás: [13-kar-es-gripper-vezerles.md](13-kar-es-gripper-vezerles.md).
 
+## Élő kar- és grippervezérlés bekötve (2026-09-23)
+
+- A felhasználó kérte, hogy a kezelői felügyeletre támaszkodva az elkészült gombos modell menjen ki élőben is.
+- A weboldal létrehozza a `/arm_cmd` `std_msgs/Float32MultiArray` publishert.
+- A kar a bázistól független `KAR ÉLESÍTÉS` gombot kapott; alapból nincs élesítve.
+- Egy gombnyomás egyetlen korlátozott lépést és egyetlen üzenetet küld. A parancsmodell induló értéke `[0, 1.570796, 0.391797, 0]`.
+- Magyar QWERTZ billentyűk: `C/V` talp balra/jobbra; `R/F` karvég előre/hátra; `T/G` fel/le; `H/J` gripper nyit/zár. Az automatikus billentyűismétlés nem küld újabb lépést.
+- Oldalbetöltés, ROS-újracsatlakozás, bázisélesítés és a `Parancsmodell alaphelyzetbe` gomb nem küld karparancsot.
+- A robotra telepített példány helye: `/home/wheeltec/pickerbot_web_ui/control_panel.html`; a repóbeli forrás: `scripts/control_panel.html`.
+
 ## Robotoldali szenzorindítás kivizsgálása (2026-09-23)
 
 - A tiszta boot utáni állapotot élőben megmértük: az `/odom` és az Astra mélység működött, a `/scan`, `/map`, `/usb_cam/image_raw` és `/camera/rgb/image_raw` nem adott friss üzenetet.
