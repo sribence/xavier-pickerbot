@@ -57,7 +57,7 @@ Olvasó jellegű robotvizsgálattal, mozgásparancs nélkül ellenőrizve:
 - A ROS `/joint_states` karértékei nullák és modelladatok, nem szenzormérések.
 - Emiatt az abszolút csúszkás vezérlés elvetve. A webes panel kis lépéses, gyári kinematikát követő gombokat használ, és külön kar-élesítés után publikál `/arm_cmd` üzenetet.
 
-**Élő használat:** a karpanel `KAR ÉLESÍTÉS` gombja független a bázis élesítésétől. Egy kattintás vagy billentyű pontosan egy parancsot küld. Magyar QWERTZ billentyűk: `C/V` talp balra/jobbra; `R/F` karvég előre/hátra; `T/G` fel/le; `H/J` gripper nyit/zár. A parancsmodell alaphelyzete `[0, 1.570796, 0.391797, 0]`; az első élő lépés ebből indul.
+**Élő használat:** a karpanel `KAR ÉLESÍTÉS` gombja független a bázis élesítésétől. Egy rövid kattintás vagy billentyűlenyomás egy finom parancslépést küld; nyomva tartáskor ugyanez a lépés 100 ms-onként ismétlődik. Magyar QWERTZ billentyűk: `C/V` talp balra/jobbra; `R/F` karvég előre/hátra; `T/G` fel/le; `H/J` gripper nyit/zár. A folyamatos ismétlés elengedéskor, elveszett billentyű-heartbeatnél (850 ms), fókuszvesztéskor, háttérbe kerüléskor, ROS-kapcsolatvesztéskor, munkatér- vagy gripperhatárnál, illetve legfeljebb 15 másodperc után leáll. A parancsmodell alaphelyzete `[0, 1.570796, 0.391797, 0]`; az első élő lépés ebből indul.
 
 ## Első élő teszt — lépésről lépésre (amikor a robot legközelebb elérhető)
 

@@ -1,6 +1,6 @@
 # Kar- és grippervezérlés — műszaki állapot
 
-Utolsó ellenőrzés: 2026-09-23. A vizsgálat olvasó jellegű volt; kar- vagy gripperparancs nem ment ki.
+Utolsó kódellenőrzés: 2026-09-24. A folyamatos vezérlés ellenőrzése során kar- vagy gripperparancs nem ment ki.
 
 ## Biztosan ismert vezérlési lánc
 
@@ -56,7 +56,9 @@ A [control_panel.html](../scripts/control_panel.html) karpanelje:
 - ellenőrzi a gyári inverz kinematikát, ízületi és munkatérkorlátokat;
 - a grippert 5-ös lépésekben vezérli a valós `0..100` skálán;
 - külön `KAR ÉLESÍTÉS` gombot használ, a bázis élesítésétől függetlenül;
-- élesítés után minden kattintás vagy billentyű pontosan egy `/arm_cmd` üzenetet küld;
+- élesítés után a rövid kattintás vagy billentyűlenyomás egy finom `/arm_cmd` lépést küld;
+- nyomva tartáskor ugyanazt a finom lépést 100 ms-onként ismétli;
+- elengedés, elveszett billentyű-heartbeat (850 ms), fókuszvesztés, háttérbe kerülő oldal, ROS-kapcsolatvesztés, munkatér- vagy gripperhatár és a 15 másodperces kemény időkorlát leállítja az ismétlést;
 - oldalbetöltéskor, újracsatlakozáskor és a parancsmodell visszaállításakor nem küld automatikus karcélt.
 
 Billentyűzet:
@@ -68,7 +70,7 @@ Billentyűzet:
 | `T` / `G` | karvég fel / le |
 | `H` / `J` | gripper nyit / zár |
 
-A billentyűismétlés figyelmen kívül marad: egy fizikai lenyomás egy lépést küld.
+A billentyű ismétlődő `keydown` eseményei heartbeatként igazolják, hogy a billentyű még le van nyomva. Ha 850 ms-ig nem érkezik új jel, a mozgás keyup nélkül is leáll. Rövid lenyomás egy lépés; nyomva tartás folyamatos finom mozgás.
 
 Az [arm_control.py](../scripts/xavier_control/arm_control.py) mock sender grippermodellje szintén a valós `0..100` tartományra frissült. A Python modul továbbra sem importál ROS-klienskönyvtárat és nem tud élő parancsot küldeni.
 
@@ -76,7 +78,7 @@ Az [arm_control.py](../scripts/xavier_control/arm_control.py) mock sender grippe
 
 1. Nyisd meg a `control_panel.html` oldalt, és ellenőrizd a `rosbridge: csatlakozva` állapotot.
 2. A karpanel `KAR ÉLESÍTÉS` gombjával külön élesítsd a kart.
-3. Használd a gombokat vagy a fenti billentyűket. Minden művelet egy kis lépést küld.
+3. Kattints vagy üsd le röviden a billentyűt egy kis lépéshez; tartsd nyomva a folyamatos finom mozgáshoz.
 4. A `Parancsmodell alaphelyzetbe` gomb csak a böngésző célállapotát állítja vissza, nem mozgatja a robotot.
 5. Leélesítéshez kattints a `KAR LEÉLESÍTÉS` gombra. A bázis webes megállítása nem változtatja a kar célhelyzetét.
 

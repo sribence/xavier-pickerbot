@@ -20,13 +20,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo-view.ps1
 
 Egyéb kapcsolók: `-NoBrowser` (nem nyit böngészőablakot), `-DashboardOnly` (a teljes műszaki szenzornézetet nyitja meg a bázisvezérlős oldal helyett).
 
-**2026-09-19 karfigyelmeztetés:** a fizikai joystickkel a talp fölötti fel-le ízület végállásnál daráló hangot és sípolást ad, utána rendellenesen mozog. A karon további mozgáspróbát ne végezz, amíg áramtalanítva át nem vizsgálták. A webes karvezérlés továbbra is szimuláció. A mérések és a gyári leállítási parancs kockázata: [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md).
+**2026-09-19 karfigyelmeztetés:** a fizikai joystickkel a talp fölötti fel-le ízület végállásnál daráló hangot és sípolást adott, utána rendellenesen mozgott. A 2026-09-23-i felhasználói döntés óta a webes karvezérlés külön `KAR ÉLESÍTÉS` után élő `/arm_cmd` parancsot tud küldeni, de csak a robot mellett álló kezelő használhatja. Automatizált vagy távoli, felügyelet nélküli karpróba továbbra sem megengedett. A mérések és a gyári leállítási parancs kockázata: [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md).
 
 **Wheeltec gyártmányú, "Xavier Pickerbot Mini" néven értékesített oktatási robot** — mecanum kerekes alváz + 4 tengelyű robotkar, NVIDIA Jetson Xavier NX fedélzeti számítógéppel, LiDAR-ral és Orbbec Astra RGBD mélységkamerával.
 
 Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájljai és magyar nyelvű dokumentációja itt található. A Unitree Go2 külön projektben van.
 
-**Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Ez EGYETLEN oldal: a C70 és hátsó kamerák, a valódi `/map`, az IR-panel, a LiDAR felülnézet, a 3D pontfelhő, valamint a bázis-, kar- és grippervezérlés is itt van (a korábbi külön `dashboard.html` 2026-09-24-én megszűnt, minden funkciója átkerült ide). A kar külön élesítéssel publikál a `/arm_cmd` témára; magyar QWERTZ billentyűk: `C/V` talp, `R/F` előre/hátra, `T/G` fel/le, `H/J` gripper nyit/zár. A webes megállítás nem helyettesíti a fizikai vészleállítót.
+**Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Ez EGYETLEN oldal: a C70 és hátsó kamerák, a valódi `/map`, az IR-panel, a LiDAR felülnézet, a 3D pontfelhő, valamint a bázis-, kar- és grippervezérlés is itt van (a korábbi külön `dashboard.html` 2026-09-24-én megszűnt, minden funkciója átkerült ide). A kar külön élesítéssel publikál a `/arm_cmd` témára; magyar QWERTZ billentyűk: `C/V` talp, `R/F` előre/hátra, `T/G` fel/le, `H/J` gripper nyit/zár. Rövid kattintás vagy billentyűlenyomás egy finom lépés, nyomva tartáskor ugyanez a lépés 10 Hz-cel ismétlődik. Elengedés, elveszett vezérlőjel, fókuszvesztés, lapváltás, munkatérhatár vagy 15 másodperc után az ismétlés leáll. A webes megállítás nem helyettesíti a fizikai vészleállítót.
 
 **2026-09-21:** a térkép újrakezdése gombot a felhasználó kipróbálta. Az USB Wi-Fi bizonytalan kapcsolata miatt a robot beépített Intel Wi-Fi-jét a TP-Link routerhez kapcsoltuk. Kontrollált, lekapcsolt Ethernet és USB Wi-Fi mellett a robot `.50` címén SSH, valamint a bemutatóoldalon kamera és kezdetben változó térkép működött. A próba végén az Ethernet visszaállt, a beépített Wi-Fi csatlakozva maradt. Hosszabb ellenőrzéskor a `/map` új üzenetei megszűntek, ezt külön kell kivizsgálni. Valódi kábelkihúzás és kábel nélküli újraindítás még nincs igazolva. Részletek: [munkamenet-átadás](docs/11-munkamenet-atadas.md), [hálózat](docs/09-robot-halozat.md).
 
@@ -42,7 +42,7 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 - [docs/05-sajat-projekt-iranyitopult.md](docs/05-sajat-projekt-iranyitopult.md) — **saját projekt #1**: élő webes irányítópult (kamerák + LiDAR + 3D point cloud)
 - [docs/06-sajat-projekt-akademia.md](docs/06-sajat-projekt-akademia.md) — **saját projekt #2**: Pickerbot Akadémia — oktatási robotika-platform terve + autonóm generáló pipeline
 - [docs/07-ismert-hibak.md](docs/07-ismert-hibak.md) — hibajelenség → ok → javítás táblázat, drágán megszerzett tudás
-- [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md) — **saját projekt #3**: kézi vezérlés (bázis-drive valós-képes ÉLESÍTÉS mögött, kar MOCK-ONLY); a `/cmd_vel` 2026-09-18-án élőben megerősítve
+- [docs/08-kezi-vezerles.md](docs/08-kezi-vezerles.md) — **saját projekt #3**: kézi vezérlés (bázis és kar külön élesítéssel); a `/cmd_vel` és `/arm_cmd` vezérlési lánca élőben megerősítve
 - [docs/10-bemutato-terkep.md](docs/10-bemutato-terkep.md) — a C70 kamera + valódi `/map` bemutató állapota és ellenőrzési sorrendje
 - [docs/11-munkamenet-atadas.md](docs/11-munkamenet-atadas.md) — az aktuális állapot és a következő fejlesztőnek szóló átadás
 - [docs/12-szenzor-inditasi-sorrend.md](docs/12-szenzor-inditasi-sorrend.md) — reboot utáni kamera/LiDAR/SLAM indítási sorrend és helyreállítás

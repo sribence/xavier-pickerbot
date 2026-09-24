@@ -289,10 +289,20 @@ Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó j
 - A felhasználó kérte, hogy a kezelői felügyeletre támaszkodva az elkészült gombos modell menjen ki élőben is.
 - A weboldal létrehozza a `/arm_cmd` `std_msgs/Float32MultiArray` publishert.
 - A kar a bázistól független `KAR ÉLESÍTÉS` gombot kapott; alapból nincs élesítve.
-- Egy gombnyomás egyetlen korlátozott lépést és egyetlen üzenetet küld. A parancsmodell induló értéke `[0, 1.570796, 0.391797, 0]`.
-- Magyar QWERTZ billentyűk: `C/V` talp balra/jobbra; `R/F` karvég előre/hátra; `T/G` fel/le; `H/J` gripper nyit/zár. Az automatikus billentyűismétlés nem küld újabb lépést.
+- Rövid kattintás vagy billentyűlenyomás egyetlen korlátozott lépést küld; nyomva tartáskor ugyanez a finom lépés 100 ms-onként ismétlődik. A parancsmodell induló értéke `[0, 1.570796, 0.391797, 0]`.
+- Magyar QWERTZ billentyűk: `C/V` talp balra/jobbra; `R/F` karvég előre/hátra; `T/G` fel/le; `H/J` gripper nyit/zár. Az ismétlődő billentyűjel heartbeat: 850 ms jelkimaradás, keyup, fókuszvesztés, háttérbe kerülő oldal, ROS-kapcsolatvesztés, határérték vagy 15 másodperc után a tartás leáll.
 - Oldalbetöltés, ROS-újracsatlakozás, bázisélesítés és a `Parancsmodell alaphelyzetbe` gomb nem küld karparancsot.
 - A robotra telepített példány helye: `/home/wheeltec/pickerbot_web_ui/control_panel.html`; a repóbeli forrás: `scripts/control_panel.html`.
+
+## Folyamatos finom karvezérlés beragadási védelemmel (2026-09-24)
+
+- A kar- és grippergombok, valamint a `C/V`, `R/F`, `T/G`, `H/J` billentyűk nyomva tartva folyamatosan ismétlik a meglévő kis lépéseket. A lépésméretek változatlanok: talp 0,02 rad, karvég 0,01 m, gripper 5.
+- Az ismétlési idő 100 ms. Egyetlen tartás legfeljebb 15 másodpercig futhat; utána a kezelőnek fel kell engednie és újra le kell nyomnia a vezérlést.
+- A korábbi beragadt bázismozgás mintájára a billentyűzet heartbeatet használ. Elengedés, pointer-cancel vagy elveszett pointer capture, 850 ms billentyűjel-kimaradás, fókuszvesztés, háttérbe kerülő oldal, lapbezárás, ROS-kapcsolatvesztés, leélesítés, gyári munkatér-/ízületi határ vagy gripper-végérték azonnal megszünteti az ismétlést.
+- A felület minden ismétlésnél új abszolút `/arm_cmd` célt küld, de a naplót legfeljebb 500 ms-onként írja, hogy a böngésző ne lassuljon be.
+- Ellenőrzés: az inline JavaScript `node --check` vizsgálata sikeres; 78 HTML-id között nincs duplikáció; a 25 meglévő Python teszt sikeres. Egy izolált időzítési próba 4 pointer-lépést, majd szabályos elengedési megállást, 8 billentyűlépést, majd heartbeat miatti automatikus megállást és a gripperhatáron történő megállást igazolt. A próba publikálási számlálója nulla volt.
+- A helyi böngészőben leélesítve egyetlen finom lépést és a parancsmodell visszaállítását is ellenőriztük; a konzol nem jelzett hibát. A robotra telepített és a 8901-es HTTP-porton kiszolgált fájl SHA-256 értéke megegyezett a repóbeli forrással (`7eedbabd9512e0153444e077253e1e9900a1ac39c08a50bbd7574c5b2e2319cb`). A roboton mentés készült `control_panel.html.bak-20260924-continuous-arm` néven.
+- A kódellenőrzés, az izolált időzítési próba és a böngészőoldali próba során a kar nem lett élesítve, ezért élő mozgásparancs nem ment ki. A tényleges folyamatos mozgást a robot mellett álló kezelő próbálja ki.
 
 ## Robotoldali szenzorindítás kivizsgálása (2026-09-23)
 
