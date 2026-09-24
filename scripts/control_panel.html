@@ -186,6 +186,13 @@
      side-fixed rész sose szoruljon ki görgetéssel. */
   .side-fixed { flex:0 0 auto; display:flex; flex-direction:column; gap:1px; background:var(--border); }
   .side-scroll { flex:1 1 auto; min-height:40px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; background:var(--border); }
+  /* A .panel alap szabálya min-height:0-t ad (más helyeken kellett), de flex gyerekként ez azt is
+     jelenti, hogy a "Kerekek" és "Kar + gripper" panel a rendelkezésre álló hely alá zsugorodhat,
+     miközben a TARTALMUK a valós méretében marad — ez okozta, hogy a két panel szövege egymásra
+     csúszott, ahelyett hogy a .side-scroll egyszerűen görgethetővé vált volna. Javítás: ezek a
+     panelek NE zsugorodjanak a tartalmuk alá, a görgetés végezze a helykezelést (2026-09-24,
+     felhasználó által jelentett hiba). */
+  .side-fixed > .panel, .side-scroll > .panel { flex:0 0 auto; min-height:auto; }
   .side-fixed .panel-body, .side-scroll .panel-body { padding:0.5rem 0.6rem; }
   .side-fixed .panel-head, .side-scroll .panel-head { padding:0.35rem 0.6rem; font-size:0.68rem; flex:none; }
   .side-fixed .telemetry, .side-scroll .telemetry { display:flex; flex-direction:column; gap:0.35rem; margin-bottom:0; }
@@ -224,20 +231,18 @@
     .side-scroll > .panel { flex:1 1 260px; }
   }
 
-  .dpad { display:grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap:6px; justify-content:center; margin:1rem 0; }
-  .dpad.dpad-cross button { font-size:0.72rem; }
-  .dpad-empty { visibility:hidden; }
+  /* A kerekek kézi-gombos irányítópultja a billentyűzet-kiosztást követi: felül Q/W/E, alul A/S/D,
+     2 sor × 3 oszlop — nincs többé külön forgató-sor a dpad fölött, és nincs "középső pötty" gomb
+     sem (2026-09-24, felhasználói kérés: rendezés a billentyűzet szerint, ne kicsinyítés). */
+  .dpad { display:grid; grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px; gap:5px; justify-content:center; margin:0.6rem 0; }
   .dpad button {
-    font-family:inherit; font-size:1.1rem; border-radius:8px; border:1px solid var(--border);
+    font-family:inherit; font-size:0.68rem; line-height:1.15; border-radius:7px; border:1px solid var(--border);
     background:var(--surface); color:var(--text); cursor:pointer; user-select:none; touch-action:none;
   }
   .dpad button:active, .dpad button.pressed { background:var(--accent); color:#0d1418; }
-  .rot-row { display:flex; gap:0.6rem; justify-content:center; margin-bottom:0.6rem; }
-  .rot-row button { font-family:inherit; padding:0.5rem 1rem; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; touch-action:none; }
-  .rot-row button:active, .rot-row button.pressed { background:var(--accent); color:#0d1418; }
 
   .stop-btn {
-    width:100%; margin-top:0.6rem; padding:0.7rem; font-family:inherit; font-size:0.9rem;
+    width:100%; margin-top:0.4rem; padding:0.45rem; font-family:inherit; font-size:0.8rem;
     font-weight:700; border-radius:8px; border:1px solid var(--bad); background:#2a1414; color:var(--bad); cursor:pointer;
   }
   .stop-btn:hover { background:var(--bad); color:#1a0e0e; }
@@ -287,12 +292,13 @@
   }
   .arm-reset { width:100%; margin-top:0.4rem; color:var(--muted); }
   .arm-live-controls { display:flex; flex-direction:column; gap:0.3rem; margin-top:0.55rem; }
-  .arm-live-controls button {
-    font-family:inherit; padding:0.55rem; border-radius:7px; border:1px solid var(--bad);
-    background:#2a1414; color:var(--bad); cursor:pointer; font-weight:700;
-  }
-  .arm-live-controls button.armed { background:var(--bad); color:#1a0e0e; }
-  .arm-live-controls button:disabled { opacity:0.5; cursor:not-allowed; }
+  /* A KAR ÉLESÍTÉS a .side-footer élén ül (ld. HTML) — ott nem kell a fenti extra felső margó,
+     a láblécen belüli sortávolság a .side-footer gap-jéből jön. */
+  .side-footer .arm-live-controls { margin-top:0; }
+  /* A kar-élesítés gomb most a .side-footer-ben él, ugyanaz a `.side-footer button` szabály adja
+     a kinézetét, mint a kerekek élesítés gombjának (szürke alapból, csak élesítve piros) — a
+     korábbi, mindig piros .arm-live-controls button felülírás megszűnt (2026-09-24, felhasználói
+     kérés: ne legyen pirosabb/eltérő a kettő). */
   .arm-live-state { color:var(--muted); font-size:0.62rem; line-height:1.35; }
   .arm-live-state.armed-label { color:var(--bad); font-weight:700; }
 
@@ -476,25 +482,26 @@
       <div class="panel controls-panel">
         <div class="panel-head"><span>Kerekek — kézi gombok</span><span class="tag live">a billentyűzet ugyanezt csinálja</span></div>
         <div class="panel-body">
-          <div class="rot-row">
-            <button id="rotLeft" title="forgás balra (angular.z +)">⟲ balra</button>
-            <button id="rotRight" title="forgás jobbra (angular.z -)">⟳ jobbra</button>
+          <!-- A gombok elrendezése a billentyűzetet követi (Q/W/E felül, A/S/D alul, pont úgy,
+             ahogy a fizikai billentyűzeten egymás mellett/fölött vannak) — nem kereszt alakú dpad
+             többé, nincs "középső pötty": a teljes megállításra ott a lenti WEBES MEGÁLLÍTÁS gomb,
+             külön kis stop-gombnak a középen nem volt önálló értelme (2026-09-24, felhasználói kérés). -->
+          <div class="dpad">
+            <button id="rotLeft" title="forgás balra (angular.z +) — Q">↺ balra [Q]</button>
+            <button id="w" title="előre — W">↑ előre [W]</button>
+            <button id="rotRight" title="forgás jobbra (angular.z -) — E">jobbra ↻ [E]</button>
+            <button id="a" title="oldalra balra, fordulás nélkül (mecanum strafe) — A">← oldalra [A]</button>
+            <button id="s" title="hátra — S">↓ hátra [S]</button>
+            <button id="d" title="oldalra jobbra, fordulás nélkül (mecanum strafe) — D">oldalra → [D]</button>
           </div>
-          <div class="dpad dpad-cross">
-            <span class="dpad-empty"></span>
-            <button id="w" title="előre">↑ előre</button>
-            <span class="dpad-empty"></span>
-            <button id="a" title="oldalra balra, fordulás nélkül (mecanum strafe)">← oldalra</button>
-            <button id="stopMid" title="azonnali megállás">■</button>
-            <button id="d" title="oldalra jobbra, fordulás nélkül (mecanum strafe)">oldalra →</button>
-            <span class="dpad-empty"></span>
-            <button id="s" title="hátra">↓ hátra</button>
-            <span class="dpad-empty"></span>
-          </div>
-          <div class="limit-note" style="margin-top:-0.6rem; margin-bottom:0.6rem;">Átlós mozgás nincs (a kontrolleren sem).</div>
+          <div class="limit-note" style="margin-top:0.2rem; margin-bottom:0.6rem;">Átlós mozgás nincs (a kontrolleren sem).</div>
           <button class="stop-btn" id="estopBtn">WEBES MEGÁLLÍTÁS — LEÉLESÍTÉS</button>
 
-          <div class="readout" id="baseReadout">
+          <!-- Ez a sor a fenti SEBESSÉG/FORGÁS telemetria-csempékkel és a csúszkák saját érték-
+               kijelzőivel duplikálta ugyanazt az infót, kis szürke szövegként — elrejtve, a mögötte
+               futó frissítő JS (updateReadout) változatlanul fut, csak nincs kirajzolva
+               (2026-09-24, felhasználói kérés: felesleges duplikált szöveg kigyomlálása). -->
+          <div class="readout" id="baseReadout" hidden>
             linear.x: <b>0.000</b> m/s · linear.y: <b>0.000</b> m/s · angular.z: <b>0.000</b> rad/s<br>
             sebességplafon: ±0.50 m/s előre-hátra, ±0.50 m/s oldalazás, ±0.50 rad/s szögsebesség
           </div>
@@ -535,16 +542,18 @@
 
           <div class="arm-sim-readout" id="armSimReadout"></div>
           <button class="arm-reset" id="armSimReset">Parancsmodell alaphelyzetbe</button>
-          <div class="arm-live-controls">
-            <button id="armLiveBtn" disabled>KAR ÉLESÍTÉS</button>
-            <span class="arm-live-state" id="armLiveState">nincs élesítve — csak modell</span>
-          </div>
         </div>
       </div>
     </div>
 
+    <!-- A KAR ÉLESÍTÉS a rögzített láblécbe került, a bázis ÉLESÍTÉS fölé — így ez sem görgethető
+         el, ugyanúgy mindig látszik, mint a bázis élesítés gomb (2026-09-24, felhasználói kérés). -->
     <div class="side-footer">
-      <button id="armBtn" disabled>ÉLESÍTÉS</button>
+      <div class="arm-live-controls">
+        <button id="armLiveBtn" disabled>KAR ÉLESÍTÉS</button>
+        <span class="arm-live-state" id="armLiveState">nincs élesítve — csak modell</span>
+      </div>
+      <button id="armBtn" disabled>KEREKEK ÉLESÍTÉS</button>
       <span class="state" id="armState">nincs élesítve — csak MOCK-log</span>
     </div>
   </div>
@@ -1354,7 +1363,7 @@ let armConfirmTimer = null;
 function cancelArmConfirm() {
   if (armConfirmTimer) { clearTimeout(armConfirmTimer); armConfirmTimer = null; }
   const btn = document.getElementById('armBtn');
-  btn.textContent = 'ÉLESÍTÉS';
+  btn.textContent = 'KEREKEK ÉLESÍTÉS';
   if (!armed) document.getElementById('armState').textContent = "nincs élesítve — csak MOCK-log";
 }
 document.getElementById('armBtn').addEventListener('click', () => {
@@ -1442,7 +1451,6 @@ function hardStop() {
   updateReadout();
   if (armed && ros.isConnected) publishTwist();
 }
-document.getElementById('stopMid').addEventListener('click', hardStop);
 document.getElementById('estopBtn').addEventListener('click', () => {
   setArmed(false, 'webes megállítás');
   log('mock', "Webes megállítás — a fizikai vészleállítót nem helyettesíti");
