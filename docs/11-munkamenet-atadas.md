@@ -1,6 +1,14 @@
-# Munkamenet-átadás — 2026-09-21
+# Munkamenet-átadás — frissítve 2026-09-25
 
 Ez a fájl a következő fejlesztőnek/agentnek adja át a **jelenlegi** állapotot. A részletes mérési előzmények a [10-bemutato-terkep.md](10-bemutato-terkep.md) fájlban, az állandó projektkontextus a repó gyökerében lévő `.ai-context.md` fájlban vannak. Jelentős feladat végén frissítsd ezt a naplót, hogy a folytatás a Git munkakönyvtárból is érthető legyen.
+
+## Legfrissebb állapot — 2026-09-25
+
+- A bemutató hivatalos indítása továbbra is a laptopon: `scripts/start-demo-view.ps1`, majd `http://127.0.0.1:8902/scripts/control_panel.html`. A térkép újrakezdése csak ezen az oldalon működik, mert a szükséges `/api/reset-map` végpontot a laptop helyi `demo_server.py` folyamata adja.
+- Internetkapcsolat nem kell. A `roslib` 1.4.1 és a `three` 0.128.0 helyi példánya a `scripts/vendor/` könyvtárban van; a laptopnak és a robotnak csak ugyanazon a LAN-on kell lennie.
+- Ugyanez a `control_panel.html` és a `vendor/` könyvtár a robotra is felkerült. A `http://192.168.123.50:8901/control_panel.html` böngészőben helyi robotoldali URL-ekről töltötte be a három függőséget, a rosbridge csatlakozott, a C70 állapota `Kamera: élő MJPEG` lett, és a konzolban nem volt hiba. A bázis és a kar végig leélesítve maradt.
+- A webes kar- és grippervezérlés külön `KAR ÉLESÍTÉS` után élő `/arm_cmd` parancsot tud küldeni. Agent önállóan ne élesítse és ne végezzen mozgáspróbát.
+- Az alábbi 2026-09-21-i bejegyzések történeti állapotot rögzítenek; ahol eltérnek ettől vagy a fájl későbbi, dátumozott szakaszaitól, a frissebb bejegyzés az irányadó.
 
 ## A két weboldal szerepe
 
@@ -9,7 +17,7 @@ Ez a fájl a következő fejlesztőnek/agentnek adja át a **jelenlegi** állapo
 | Kutatók Éjszakája bemutató, most ez a fő cél | `scripts/control_panel.html` | `http://127.0.0.1:8902/scripts/control_panel.html` |
 | Részletes műszaki szenzornézet, későbbi fejlesztés | `scripts/dashboard.html` | `http://127.0.0.1:8902/scripts/dashboard.html` |
 
-A bemutatóoldal a műszaki oldal `?embed=1` módjából ágyazza be a C70 kamerát és a valódi `/map` térképet. A gyökérben lévő azonos nevű HTML-fájlok csak átirányítók. A roboton lévő `:8901` oldal korábbi telepítés, a Git-változások oda nem kerülnek fel automatikusan. A laptopos indító `scripts/start-demo-view.ps1`; a `-DashboardOnly` kapcsoló a műszaki oldalt nyitja.
+A `control_panel.html` közvetlenül tartalmazza a kamerák, a valódi `/map`, a LiDAR és a 3D felhő nézetét. A gyökérben lévő azonos nevű HTML-fájlok csak átirányítók. A laptopos indító a `scripts/control_panel.html` oldalt nyitja; a Git-változások továbbra sem kerülnek fel automatikusan a robot `:8901` oldalára.
 
 ## Mostani állapot és a legutóbbi újraindítás
 
@@ -27,10 +35,10 @@ A helyi `main` közelmúltbeli commitjai: `392e363` (korábbi funkciók átvitel
 
 ## Biztonság és következő munka
 
-- A kar fel-le ízülete a felhasználó szerint darál és sípol. A webes karpanel továbbra is kizárólag szimuláció. Élő karpróba csak áramtalanított fizikai ellenőrzés után.
+- A kar fel-le ízülete korábban a felhasználó szerint daráló hangot és sípolást adott. A webes karpanel ma már külön élesítés után élő parancsot küldhet; agent ne élesítse és ne mozgassa önállóan.
 - Az alváz webes vezérlése élesítés után valódi `/cmd_vel` parancsot küld. A webes megállítás hálózatfüggő; mozgáspróbához fizikai leállító kell. Ebben a munkamenetben nem élesítettük és nem mozgattuk a robotot.
 - A bemutatóoldal finomítása az elsődleges feladat. A teljes műszaki szenzornézet bővítése későbbi szakasz.
-- Következő mérés: az alagút hosszabb idejű tartóssága; a térkép frissessége mozgás alatt csak felügyelt, fizikai leállítóval végzett próba során. A C70 USB-leválás okát (kábel/hub/táp) külön vizsgáld. Az indító újrafuttatásra javít, háttérben automatikus SSH-újracsatlakozás még nincs. A jelenlegi oldalt egyelőre a laptop `:8902` portján nyisd; a robot `:8901` oldalát nem frissítettük.
+- Következő mérés: az alagút hosszabb idejű tartóssága; a térkép frissessége mozgás alatt csak felügyelt, fizikai leállítóval végzett próba során. A C70 USB-leválás okát (kábel/hub/táp) külön vizsgáld. Az indító újrafuttatásra javít, háttérben automatikus SSH-újracsatlakozás még nincs. A bemutatóhoz a laptop `:8902` oldalát nyisd; a robot `:8901` oldala friss, de a térképtörlő helyi API-ja ott nem érhető el.
 
 ## Helyi változások és ellenőrzés
 
@@ -38,7 +46,7 @@ A mostani, felhasználó által még commitolandó változások: `scripts/start-
 
 ## 2026-09-21: térkép törlése és USB Wi-Fi
 
-- A bemutató és a műszaki oldal térképpaneljén van **Térkép újrakezdése** gomb. A `scripts/demo_server.py` csak a laptop `127.0.0.1:8902` címén fogadja a helyi POST-kérést, ellenőrzi az Origin/Host/action mezőket, és csak a `pickerbot-slam` konténert indítja újra. Az addigi térképkép eltűnik, az új `/map` adatból rajzolódik újra. A felhasználó a gomb működését élőben megerősítette. A szerver a jelszót a meglévő README-ből olvassa, átmeneti helyi fájlt használ a Plinkhez, majd törli. Ne add ki a helyi szervert a hálózatra. A robot régi `:8901` oldalán a gomb nincs telepítve.
+- A bemutató és a műszaki oldal térképpaneljén van **Térkép újrakezdése** gomb. A `scripts/demo_server.py` csak a laptop `127.0.0.1:8902` címén fogadja a helyi POST-kérést, ellenőrzi az Origin/Host/action mezőket, és csak a `pickerbot-slam` konténert indítja újra. Az addigi térképkép eltűnik, az új `/map` adatból rajzolódik újra. A felhasználó a gomb működését élőben megerősítette. A szerver a jelszót a meglévő README-ből olvassa, átmeneti helyi fájlt használ a Plinkhez, majd törli. Ne add ki a helyi szervert a hálózatra. A robot `:8901` oldalán a gomb látszik, de a helyi API-végpont hiánya miatt ott nem használható.
 - A TP-Link TL-WN823N / RTL8192EU stick `wlan1` eszközként működik. A roboton a `pickerbot-robot-wifi` NetworkManager-profil automatikusan kapcsolódik a `TP-Link_A426` SSID-hez, címe `192.168.123.51/24`; a Wi-Fi jelszó csak a robot root-jogú, `0600` módú profiljában van. A `scripts/robot-wifi-failover.sh` telepített példánya `/etc/NetworkManager/dispatcher.d/90-pickerbot-wifi-failover`; Ethernet kiesésekor a ROS által használt `.50/32` címet a Wi-Fi-re teszi, visszatéréskor leveszi. A robot saját `wlan0` hotspotját nem módosítottuk.
 - **Kontrollált próba, fizikailag bent hagyott kábellel:** az `eth0` kapcsolatot logikailag lekapcsoltuk, és 180 másodperces automatikus visszakapcsolást állítottunk be. A `.50` Wi-Fi aliasról SSH, a 9090-es rosbridge és a 8901-es webport elérhető volt, az útvonal `wlan1`-et mutatott. A roboton a `/map` és C70 publikálók futottak. A böngészőben a térkép az újrakapcsolás után ismét megjelent, de az MJPEG-kamera Wi-Fi-n ismételten megszakadt, és a pillanatkép-kérés több másodpercig tarthatott. A rosbridge szolgáltatást és a web-video konténert egyszer újraindítottuk; a SLAM-et, C70-et, LiDAR-t, bringupot és a kart nem indítottuk újra. A próba után az Ethernet automatikusan visszaállt, a bemutatóoldal ismét `Kamera: élő MJPEG` állapotot és friss, 384×384-es térképet mutatott. A Wi-Fi átállás így még **nem kész bemutatóüzemre**; valódi kábelkihúzást és újraindítást kábel nélkül nem igazoltunk.
 - A kezdeti Wi-Fi jel körülbelül −78 dBm, a feltöltési link 6,5 Mbit/s volt. A felhasználó kb. 50 cm-rel közelebb vitte az eszközöket; ekkor −36 dBm és 39 Mbit/s volt mérhető, de a böngészős stream így sem bizonyult stabilnak az átváltás során. A bemutató helyén, végleges távolságon új mérés kell. A robot web_video_serverének 640×480-as tényleges képe a szűk Wi-Fi linken torlódhat; a méretcsökkentéshez szerveroldali megoldás kell, az URL-paraméter önmagában nem elég.
@@ -273,6 +281,17 @@ Az újraindított `pickerbot-slam` (új, üres térkép) után a felhasználó j
   1. ~~A `dashboard.html` leegyszerűsítése "csak kamera-/szenzorképek" nézetté~~ — **okafogyottá vált**: a felhasználó úgy döntött, hogy ehelyett minden szenzort (IR, LiDAR felülnézet, 3D pontfelhő is) a `control_panel.html`-be kell átemelni, majd a `dashboard.html`-t törölni. Lásd lent.
   2. Élő, a felhasználó saját gépén/böngészőjében történő visszaigazolás erre a teljes új elrendezésre (kis-kép sáv, nagy nézet váltás, rögzített napló/ÉLESÍTÉS, görgethető jobb oldalsáv) — még nem történt meg, csak az én saját böngésző-tesztem (ami a robot LAN-ját nem éri el, tehát élő kamera-/telemetria-adatot nem tud ellenőrizni, csak az elrendezést és a JS-hibátlanságot).
   3. A `docs/` mappa átnézése/rendezése (korábbról elnapolt altéma) — továbbra sem kezdődött el.
+
+## Internet nélküli bemutatófüggőségek (2026-09-25)
+
+- A Kutatók Éjszakáján nem lesz internetkapcsolat; a laptop és a robot egy közös helyi hálózaton lesz.
+- A `scripts/control_panel.html` korábban három JavaScript-fájlt töltött a jsDelivr CDN-ről. Internet nélkül emiatt a ROS-kapcsolat és a 3D nézet már az oldal indulásakor elromlott volna.
+- A repó most helyben tartalmazza a rögzített verziókat: `roslib` 1.4.1, `three` 0.128.0 és a hozzá tartozó `OrbitControls.js`. A licencek és a forrásjegyzék a `scripts/vendor/` alatt találhatók.
+- A `scripts/control_panel.html` és a repóban még megtalálható `scripts/dashboard.html` relatív, helyi `vendor/` útvonalakat használ; egyik sem kér futás közben JavaScriptet külső CDN-ről.
+- Bemutatófeltétel: internet nem kell, de a laptopnak továbbra is el kell érnie a robot `192.168.123.50` címét a közös LAN-on.
+- A fájlok felkerültek a robot `/home/wheeltec/pickerbot_web_ui/` könyvtárába. Az előző oldal mentése: `control_panel.html.bak-20260925-offline`; a webszolgáltatást nem kellett újraindítani.
+- Élő HTTP-ellenőrzés: a robot 8901-es portjáról az oldal és mindhárom JavaScript-fájl `200` választ adott, és a letöltött tartalom SHA-256 értéke egyezett a repóbeli fájléval. Az oldal hash-e `48b1aaf4dcdcecbe88a24f82a67d3ebd502c9ea25aa4cb6ec769e04245c849f8`.
+- Helyi ellenőrzés: mindkét HTML inline JavaScriptje és mindhárom külső JavaScript-fájl átment a `node --check` vizsgálaton; a 25 meglévő Python teszt sikeres; a böngésző helyi `vendor/` URL-eket töltött, hibanaplója üres volt, a bázis és a kar leélesítve maradt.
 
 ## Kar- és grippervezérlés műszaki lezárása (2026-09-23)
 

@@ -11,6 +11,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-demo-view.ps1
 
 Ez megnyitja az oldalt: `http://127.0.0.1:8902/scripts/control_panel.html`
 
+**A bemutatóhoz nem kell internetkapcsolat.** A szükséges ROSLIB és Three.js fájlok rögzített verzióban a `scripts/vendor/` könyvtárban vannak. A laptopnak és a robotnak ugyanazon a helyi hálózaton kell lennie, hogy a kamerák, szenzorok és a vezérlés elérje a robotot.
+
 Leállításhoz:
 
 ```powershell
@@ -66,11 +68,11 @@ Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájlja
 | SSH | kulcsos, jelszó nélkül — `wheeltec@192.168.123.50`, kulcs: `~/.ssh/pickerbot_mini` |
 | Sudo jelszó | `dongguan` (gyári alapértelmezett — ugyanaz, mint a Wi-Fi hotspot jelszava) |
 | Státusz | élő, tesztelt irányítópult 2026-08-25 óta; kézi vezérlés élőben megerősítve 2026-09-18; oktatási platform terve kész, generálása folyamatban |
-| Robotoldali, korábban telepített weboldal | `http://192.168.123.50:8901/control_panel.html` — automatikusan indul bekapcsoláskor, de a repó új kamera-/térképfelületét még nem tartalmazza |
+| Robotoldali bemutatóoldal | `http://192.168.123.50:8901/control_panel.html` — a 2026-09-25-i aktuális oldal és helyi JavaScript-függőségei telepítve; a térképtörléshez továbbra is a laptop `:8902` oldalát használd |
 
 ## Kolléga-teszteléshez: mindent automatikusan indít a robot
 
-**2026-09-18 óta:** a robot bekapcsolásakor a három alap systemd-szolgáltatás magától elindul. A roboton lévő régi vezérlőpult SSH nélkül elérhető a `http://192.168.123.50:8901/control_panel.html` címen. A repó aktuális C70- és térképes felületéhez a laptopon futó `scripts/start-demo-view.ps1` indító kell, amíg az új weboldal nincs a robotra telepítve.
+**2026-09-18 óta:** a robot bekapcsolásakor a három alap systemd-szolgáltatás magától elindul. A 2026-09-25-i aktuális vezérlőpult SSH nélkül elérhető a `http://192.168.123.50:8901/control_panel.html` címen is. A bemutatón a laptopos `scripts/start-demo-view.ps1` indítót használd, mert a térkép újrakezdése a laptop helyi `demo_server.py` végpontját igényli.
 
 Roboton futó systemd service-ek (`sudo systemctl status <név>` az ellenőrzéshez):
 - `pickerbot-bringup` — `turn_on_wheeltec_robot.launch` (bázis-driver, `/cmd_vel`, `/arm_cmd`, `/odom`, `/imu`, `/PowerVoltage`)
