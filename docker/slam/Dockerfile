@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-slam-gmapping \
     && rm -rf /var/lib/apt/lists/*
 
-COPY gmapping.launch /opt/pickerbot/gmapping.launch
+COPY gmapping.launch gmapping-tuned.launch /opt/pickerbot/
 COPY start-slam.sh /usr/local/bin/start-slam
 RUN chmod +x /usr/local/bin/start-slam
 

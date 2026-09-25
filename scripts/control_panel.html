@@ -265,6 +265,14 @@
   .limit-warn { display:none; font-size:0.74rem; color:var(--bad); line-height:1.45; margin-top:0.4rem; }
   .limit-box.over .limit-warn { display:block; }
   .limit-box.over .slider-row .val { color:var(--bad); }
+  .mapping-profile { display:flex; gap:0.45rem; align-items:center; margin-bottom:0.5rem; }
+  .mapping-profile button {
+    flex:0 0 auto; font-family:inherit; font-size:0.66rem; font-weight:700; padding:0.42rem 0.55rem;
+    border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer;
+  }
+  .mapping-profile button.active { border-color:var(--good); color:var(--good); background:rgba(107,201,138,0.09); }
+  .mapping-profile .state { color:var(--faint); font-size:0.58rem; line-height:1.25; }
+  .limit-box input:disabled { opacity:0.6; }
 
   .gripper-row { display:flex; gap:0.6rem; margin-top:1rem; }
   .gripper-row button {
@@ -347,6 +355,7 @@
         <span class="thumb-label">Hátsó RGB</span>
         <span class="thumb-active-note">nagyban látható</span>
         <img id="rgbImgThumb" alt="Hátsó RGB kamera kisképe" hidden>
+        <canvas id="rgbCanvasThumb" aria-label="Hátsó RGB kamera tömörített ROS-tartaléka" hidden></canvas>
       </div>
       <div class="panel thumb-tile" data-target="tileDepth">
         <span class="thumb-label">Mélység</span>
@@ -387,6 +396,8 @@
         <div class="big-sensor" id="bigRgb" hidden>
           <span class="big-sensor-label">Hátsó RGB</span>
           <img id="rgbImg" alt="Hátsó RGB kamera (Astra) képe" hidden>
+          <canvas id="rgbCanvas" width="640" height="480" aria-label="Hátsó RGB kamera tömörített ROS-tartaléka" hidden></canvas>
+          <span class="stat" id="rgbStatus" role="status">RGB: kapcsolódás...</span>
         </div>
         <div class="big-sensor" id="bigDepth" hidden>
           <span class="big-sensor-label">Hátsó mélység</span>
@@ -440,13 +451,17 @@
 
       <div class="panel">
         <div class="panel-body">
+          <div class="mapping-profile">
+            <button id="mappingProfileBtn" type="button" class="active" aria-pressed="true">TÉRKÉPEZÉS: BE</button>
+            <span class="state" id="mappingProfileState">web: 0,20 / 0,10 / 0,30 · joystickot nem korlátozza</span>
+          </div>
           <div class="limit-box" id="linLimitBox">
             <div class="slider-row">
               <label for="linLimit">előre-hátra</label>
-              <span class="val" id="linLimitV">0.50 m/s</span>
+              <span class="val" id="linLimitV">0.20 m/s</span>
             </div>
             <div class="range-wrap">
-              <input type="range" id="linLimit" min="0.05" max="0.55" step="0.01" value="0.5">
+              <input type="range" id="linLimit" min="0.05" max="0.55" step="0.01" value="0.2" disabled>
             </div>
             <div class="limit-note">Csak W/S. Max 0.55 m/s.</div>
           </div>
@@ -454,10 +469,10 @@
           <div class="limit-box" id="strafeLimitBox">
             <div class="slider-row">
               <label for="strafeLimit">oldalazás</label>
-              <span class="val" id="strafeLimitV">0.50 m/s</span>
+              <span class="val" id="strafeLimitV">0.10 m/s</span>
             </div>
             <div class="range-wrap">
-              <input type="range" id="strafeLimit" min="0.03" max="0.57" step="0.01" value="0.5">
+              <input type="range" id="strafeLimit" min="0.03" max="0.57" step="0.01" value="0.1" disabled>
             </div>
             <div class="limit-note">Csak A/D. Max 0.57 m/s.</div>
           </div>
@@ -465,10 +480,10 @@
           <div class="limit-box" id="angLimitBox">
             <div class="slider-row">
               <label for="angLimit">forgás</label>
-              <span class="val" id="angLimitV">0.50 rad/s</span>
+              <span class="val" id="angLimitV">0.30 rad/s</span>
             </div>
             <div class="range-wrap">
-              <input type="range" id="angLimit" min="0.1" max="0.98" step="0.05" value="0.5">
+              <input type="range" id="angLimit" min="0.1" max="0.98" step="0.05" value="0.3" disabled>
               <span class="warn-mark" id="angWarnMark" title="Ez fölött a térképezés szétcsúszhat"></span>
             </div>
             <div class="limit-note">Csak webes forgatógombok. Max 0.98 rad/s.</div>
@@ -963,34 +978,114 @@ function refreshC70ThumbFeed() {
 // ================= HÁTSÓ RGB + MÉLYSÉG (Astra) =================
 const rgbImg = document.getElementById('rgbImg');
 const rgbImgThumb = document.getElementById('rgbImgThumb');
+const rgbCanvas = document.getElementById('rgbCanvas');
+const rgbCanvasThumb = document.getElementById('rgbCanvasThumb');
+const rgbStatus = document.getElementById('rgbStatus');
 const rgbStreamUrl = `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw`;
+let rgbMjpegStarted = false;
+let rgbFallbackStarted = false;
+let rgbDecodeBusy = false;
+let rgbColorEnabled = true;
+const rgbCompressedTopic = new ROSLIB.Topic({
+  ros, name: '/camera/rgb/image_raw/compressed', messageType: 'sensor_msgs/CompressedImage',
+  throttle_rate: 500, queue_length: 1
+});
+
+function stopRgbFallback() {
+  if (rgbFallbackStarted) rgbCompressedTopic.unsubscribe(onRgbCompressed);
+  rgbFallbackStarted = false;
+}
+
+function startRgbFallback(reason = 'MJPEG nem érhető el') {
+  if (!rgbColorEnabled || rgbMjpegStarted || rgbFallbackStarted) return;
+  rgbFallbackStarted = true;
+  rgbStatus.textContent = `RGB: tömörített ROS-tartalék · ${reason}`;
+  rgbCompressedTopic.subscribe(onRgbCompressed);
+}
+
+function onRgbCompressed(msg) {
+  if (!rgbColorEnabled || rgbMjpegStarted || rgbDecodeBusy || typeof msg.data !== 'string') return;
+  const format = String(msg.format || '').toLowerCase();
+  if (format && !format.includes('jpeg') && !format.includes('jpg')) {
+    rgbStatus.textContent = `RGB: nem támogatott tömörített formátum (${msg.format})`;
+    return;
+  }
+  rgbDecodeBusy = true;
+  const frame = new Image();
+  frame.onload = () => {
+    const canvas = rgbBigActive() ? rgbCanvas : rgbCanvasThumb;
+    const otherCanvas = canvas === rgbCanvas ? rgbCanvasThumb : rgbCanvas;
+    const otherImg = rgbBigActive() ? rgbImgThumb : rgbImg;
+    [rgbImg, rgbImgThumb].forEach(el => { el.hidden = true; });
+    otherImg.removeAttribute('src');
+    otherCanvas.hidden = true;
+    if (canvas.width !== frame.naturalWidth) canvas.width = frame.naturalWidth;
+    if (canvas.height !== frame.naturalHeight) canvas.height = frame.naturalHeight;
+    canvas.getContext('2d').drawImage(frame, 0, 0);
+    canvas.hidden = false;
+    rgbStatus.textContent = `RGB: tömörített ROS-tartalék · ${frame.naturalWidth}×${frame.naturalHeight}`;
+    rgbDecodeBusy = false;
+  };
+  frame.onerror = () => {
+    rgbDecodeBusy = false;
+    rgbStatus.textContent = 'RGB: tömörített képkocka dekódolási hiba';
+  };
+  frame.src = `data:image/jpeg;base64,${msg.data}`;
+}
+
 // A nagy ÉS a kis RGB-kép is csak akkor tartson nyitva MJPEG-kapcsolatot, ha épp ő a látszó —
 // a másikét le kell állítani, különben a web_video_server-nél versenyeznek egymással (lásd setBigSensor()).
 function refreshRgbFeed() {
   const target = rgbBigActive() ? rgbImg : rgbImgThumb;
   const other = target === rgbImg ? rgbImgThumb : rgbImg;
+  const targetCanvas = target === rgbImg ? rgbCanvas : rgbCanvasThumb;
+  const otherCanvas = targetCanvas === rgbCanvas ? rgbCanvasThumb : rgbCanvas;
   other.removeAttribute('src');
   other.hidden = true;
-  target.hidden = true;
-  if (rgbBigActive()) {
-    rgbImg.src = `${rgbStreamUrl}&_=${Date.now()}`;
-  } else {
-    rgbImgThumb.src = `${rgbStreamUrl}&_=${Date.now()}`;
+  otherCanvas.hidden = true;
+  if (!rgbColorEnabled) {
+    target.removeAttribute('src');
+    target.hidden = true;
+    targetCanvas.hidden = true;
+    return;
   }
+  // A tartalék canvas maradjon látható addig, amíg az MJPEG ténylegesen be nem töltött.
+  target.hidden = true;
+  target.src = `${rgbStreamUrl}&_=${Date.now()}`;
 }
 function onRgbLoad(event) {
   const expected = rgbBigActive() ? rgbImg : rgbImgThumb;
-  event.currentTarget.hidden = event.currentTarget !== expected;
+  if (event.currentTarget !== expected) {
+    event.currentTarget.hidden = true;
+    return;
+  }
+  rgbMjpegStarted = true;
+  stopRgbFallback();
+  [rgbCanvas, rgbCanvasThumb].forEach(el => { el.hidden = true; });
+  [rgbImg, rgbImgThumb].forEach(el => { el.hidden = el !== expected; });
+  rgbStatus.textContent = 'RGB: élő MJPEG';
 }
-function onRgbError(event) { event.currentTarget.hidden = true; }
+function onRgbError(event) {
+  // A nézetváltáskor szándékosan eltávolított src ne indítsa el a fallbacket.
+  if (!event.currentTarget.getAttribute('src')) return;
+  event.currentTarget.hidden = true;
+  rgbMjpegStarted = false;
+  startRgbFallback('videóalagút nem érhető el');
+}
 [rgbImg, rgbImgThumb].forEach(el => {
   el.addEventListener('load', onRgbLoad);
   el.addEventListener('error', onRgbError);
 });
 refreshRgbFeed(); // induláskor a RGB nincs nagyban, tehát a kisképe azonnal éljen, a nagyé nem
+setTimeout(() => {
+  if (rgbColorEnabled && !rgbMjpegStarted) startRgbFallback('MJPEG indulási időtúllépés');
+}, 3000);
 setInterval(() => {
   const target = rgbBigActive() ? rgbImg : rgbImgThumb;
-  if (!document.hidden && (!target.currentSrc || !target.naturalWidth)) refreshRgbFeed();
+  if (!document.hidden && rgbColorEnabled && !rgbMjpegStarted) {
+    startRgbFallback('MJPEG nem érhető el');
+    refreshRgbFeed();
+  }
 }, 5000);
 
 const depthTopic = new ROSLIB.Topic({
@@ -1054,8 +1149,20 @@ function wireToggle(checkboxId, wrapId, service, onChange) {
   wrap.addEventListener('click', (e) => e.stopPropagation());
 }
 wireToggle('toggleColor', 'toggleColorWrap', svcColor, (on) => {
-  const url = on ? `http://${WEB_VIDEO_HOST}:${WEB_VIDEO_PORT}/stream?topic=/camera/rgb/image_raw&_=${Date.now()}` : '';
-  liveTargets('tileRgb', rgbImg, rgbImgThumb).forEach(el => { el.src = url; });
+  rgbColorEnabled = on;
+  rgbMjpegStarted = false;
+  if (!on) {
+    stopRgbFallback();
+    [rgbImg, rgbImgThumb].forEach(el => { el.removeAttribute('src'); el.hidden = true; });
+    [rgbCanvas, rgbCanvasThumb].forEach(el => { el.hidden = true; });
+    rgbStatus.textContent = 'RGB: kikapcsolva';
+    return;
+  }
+  rgbStatus.textContent = 'RGB: kapcsolódás...';
+  refreshRgbFeed();
+  setTimeout(() => {
+    if (rgbColorEnabled && !rgbMjpegStarted) startRgbFallback('MJPEG indulási időtúllépés');
+  }, 3000);
 });
 wireToggle('toggleDepth', 'toggleDepthWrap', svcDepth);
 
@@ -1065,6 +1172,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     liveTargets('tileC70', c70Img, c70ImgThumb).forEach(el => el.removeAttribute('src'));
     liveTargets('tileRgb', rgbImg, rgbImgThumb).forEach(el => el.removeAttribute('src'));
+    rgbMjpegStarted = false;
+    stopRgbFallback();
     return;
   }
   c70MjpegStarted = false;
@@ -1075,6 +1184,7 @@ document.addEventListener('visibilitychange', () => {
   setTimeout(() => {
     if (document.hidden) return;
     if (!c70MjpegStarted && !c70Img.naturalWidth) startC70Fallback();
+    if (rgbColorEnabled && !rgbMjpegStarted) startRgbFallback('MJPEG indulási időtúllépés');
   }, 5000);
   if (!ros.isConnected) { try { ros.connect(ROS_URL); } catch (e) { /* soron következő próba */ } }
 });
@@ -1313,17 +1423,17 @@ scanTopic.subscribe(drawScan);
 // Ha ez a szám változik, a xavier_control/base_drive.py-ban lévő megfelelőt is frissítsd.
 const LINEAR_SLIDER_MIN = 0.05;
 const LINEAR_SLIDER_MAX = 0.55;   // mért kontroller-csúcssebesség (2026-09-23)
-let linearLimit = 0.5;            // alapérték a felhasználó kérésére (2026-09-23), a mért csúcs alatt
+let linearLimit = 0.2;            // térképezési profil induláskor; normál profil: 0,5 m/s
 // Élő próba (felhasználói jelzés): az "előre" gomb hátrafelé vitte a robotot -> az x előjelét megfordítjuk.
 const X_SIGN = -1;
 const MAX_ANGULAR_RADPS = 0.5;
 const ANGULAR_SLIDER_MIN = 0.1;
 const ANGULAR_SLIDER_MAX = 0.98;  // mért kontroller-csúcs szögsebesség (2026-09-23)
 const ANGULAR_MAP_WARN_RADPS = 0.6;
-let angularLimit = MAX_ANGULAR_RADPS;
+let angularLimit = 0.3;           // térképezési profil induláskor; normál profil: 0,5 rad/s
 const STRAFE_SLIDER_MIN = 0.03;
 const STRAFE_SLIDER_MAX = 0.57;   // mért kontroller-csúcssebesség (2026-09-23)
-let strafeLimit = 0.5;
+let strafeLimit = 0.1;            // mecanum oldalcsúszás miatt térképezéskor különösen alacsony
 const MAX_LINEAR_ACCEL_PER_TICK = 0.03;
 const MAX_ANGULAR_ACCEL_PER_TICK = 0.06;
 const TICK_MS = 100; // 10 Hz — jóval ritkább, mint egy valós joystick-loop, de elég egy manuális UI-hoz
@@ -1512,6 +1622,63 @@ document.getElementById('estopBtn').addEventListener('click', () => {
   slider.addEventListener('input', apply);
   apply();
 })();
+
+// ---------- térképezési sebességprofil ----------
+// Csak a webes W/S/A/D/Q/E vezérlést korlátozza. A fizikai joystick parancsait ez az oldal nem tudja
+// elfogni vagy módosítani, ezért ezt a felületen is egyértelműen jelezzük.
+const MAPPING_SPEED_PROFILE = Object.freeze({ linear: 0.20, strafe: 0.10, angular: 0.30 });
+const NORMAL_SPEED_PROFILE = Object.freeze({ linear: 0.50, strafe: 0.50, angular: 0.50 });
+let mappingProfileActive = true;
+let nonMappingProfile = { ...NORMAL_SPEED_PROFILE };
+
+function applySpeedProfile(profile) {
+  const values = [
+    ['linLimit', profile.linear],
+    ['strafeLimit', profile.strafe],
+    ['angLimit', profile.angular],
+  ];
+  values.forEach(([id, value]) => {
+    const slider = document.getElementById(id);
+    slider.value = String(value);
+    slider.dispatchEvent(new Event('input'));
+  });
+}
+
+function renderMappingProfile() {
+  const btn = document.getElementById('mappingProfileBtn');
+  const state = document.getElementById('mappingProfileState');
+  btn.classList.toggle('active', mappingProfileActive);
+  btn.setAttribute('aria-pressed', String(mappingProfileActive));
+  btn.textContent = mappingProfileActive ? 'TÉRKÉPEZÉS: BE' : 'TÉRKÉPEZÉS: KI';
+  ['linLimit', 'strafeLimit', 'angLimit'].forEach(id => {
+    document.getElementById(id).disabled = mappingProfileActive;
+  });
+  state.textContent = mappingProfileActive
+    ? 'web: 0,20 / 0,10 / 0,30 · joystickot nem korlátozza'
+    : 'egyéni webes sebességek · kattints a stabil térképezéshez';
+}
+
+function setMappingProfile(active) {
+  if (active === mappingProfileActive) return;
+  hardStop();
+  if (active) {
+    nonMappingProfile = { linear: linearLimit, strafe: strafeLimit, angular: angularLimit };
+    mappingProfileActive = true;
+    applySpeedProfile(MAPPING_SPEED_PROFILE);
+    log('mock', 'Térképezési profil bekapcsolva: web 0,20 / 0,10 / 0,30');
+  } else {
+    mappingProfileActive = false;
+    applySpeedProfile(nonMappingProfile);
+    log('mock', 'Térképezési profil kikapcsolva: egyéni webes sebességek visszaállítva');
+  }
+  renderMappingProfile();
+}
+
+document.getElementById('mappingProfileBtn').addEventListener('click', () => {
+  setMappingProfile(!mappingProfileActive);
+});
+applySpeedProfile(MAPPING_SPEED_PROFILE);
+renderMappingProfile();
 
 // billentyűzet is működjön: W/S előre-hátra, A/D oldalazás (fordulás nélkül), Q/E forgatás
 // (tengelye körül, a helyén), a nyilak is jók forgatáshoz.

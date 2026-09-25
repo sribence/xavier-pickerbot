@@ -10,4 +10,16 @@ for attempt in {1..60}; do
   sleep 1
 done
 rosparam get /run_id >/dev/null
-exec roslaunch /opt/pickerbot/gmapping.launch
+
+profile="${GMAPPING_PROFILE:-baseline}"
+case "$profile" in
+  baseline) launch_file=/opt/pickerbot/gmapping.launch ;;
+  tuned) launch_file=/opt/pickerbot/gmapping-tuned.launch ;;
+  *)
+    echo "Unknown GMAPPING_PROFILE: $profile (expected baseline or tuned)" >&2
+    exit 64
+    ;;
+esac
+
+echo "Pickerbot SLAM profile: $profile ($launch_file)"
+exec roslaunch "$launch_file"

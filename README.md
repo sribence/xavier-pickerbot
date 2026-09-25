@@ -13,6 +13,8 @@ Ez megnyitja az oldalt: `http://127.0.0.1:8902/scripts/control_panel.html`
 
 **A bemutatóhoz nem kell internetkapcsolat.** A szükséges ROSLIB és Three.js fájlok rögzített verzióban a `scripts/vendor/` könyvtárban vannak. A laptopnak és a robotnak ugyanazon a helyi hálózaton kell lennie, hogy a kamerák, szenzorok és a vezérlés elérje a robotot.
 
+Az indító automatikusan elindít egy háttérben futó videóalagút-őrzőt is. Ez 10 másodpercenként ellenőrzi a C70 és a hátsó RGB pillanatképét; két egymást követő hibás kör után újranyitja a helyi SSH-alagutat. A `stop-demo-view.ps1` az őrzőt is leállítja. A mérési napló helye: `%TEMP%\pickerbot-demo-watch-v2.csv`.
+
 Leállításhoz:
 
 ```powershell
@@ -29,6 +31,10 @@ Egyéb kapcsolók: `-NoBrowser` (nem nyit böngészőablakot), `-DashboardOnly` 
 Ez a Xavier Pickerbot Mini önálló repója: a robot szoftvere, indítófájljai és magyar nyelvű dokumentációja itt található. A Unitree Go2 külön projektben van.
 
 **Jelenlegi laptopos felület:** a `scripts/start-demo-view.ps1` a helyi `http://127.0.0.1:8902/scripts/control_panel.html` oldalt nyitja meg. Ez EGYETLEN oldal: a C70 és hátsó kamerák, a valódi `/map`, az IR-panel, a LiDAR felülnézet, a 3D pontfelhő, valamint a bázis-, kar- és grippervezérlés is itt van (a korábbi külön `dashboard.html` 2026-09-24-én megszűnt, minden funkciója átkerült ide). A kar külön élesítéssel publikál a `/arm_cmd` témára; magyar QWERTZ billentyűk: `C/V` talp, `R/F` előre/hátra, `T/G` fel/le, `H/J` gripper nyit/zár. Rövid kattintás vagy billentyűlenyomás egy finom lépés, nyomva tartáskor ugyanez a lépés 10 Hz-cel ismétlődik. Elengedés, elveszett vezérlőjel, fókuszvesztés, lapváltás, munkatérhatár vagy 15 másodperc után az ismétlés leáll. A webes megállítás nem helyettesíti a fizikai vészleállítót.
+
+**Hátsó RGB tartalék:** az Astra elsődleges képe MJPEG-en érkezik. Ha a helyi 8080-as videóalagút kiesik, a felület legfeljebb néhány másodpercen belül átvált a helyi rosbridge-en érkező `/camera/rgb/image_raw/compressed` JPEG-témára, majd az alagút visszatérésekor magától visszavált MJPEG-re. Ez internet nélkül is működik.
+
+**Térképezési sebességprofil:** a bemutatóoldal alapból bekapcsolt `TÉRKÉPEZÉS` profilja a webes vezérlést 0,20 m/s előre-hátra, 0,10 m/s oldalazás és 0,30 rad/s forgás értékre korlátozza. Profilváltáskor a felület előbb megállítja a webes mozgáscélt. Kikapcsolva visszaállnak az előző egyéni csúszkaértékek. A profil csak a webes `W/S/A/D/Q/E` vezérlést érinti; a fizikai joystickot nem korlátozza.
 
 **2026-09-21:** a térkép újrakezdése gombot a felhasználó kipróbálta. Az USB Wi-Fi bizonytalan kapcsolata miatt a robot beépített Intel Wi-Fi-jét a TP-Link routerhez kapcsoltuk. Kontrollált, lekapcsolt Ethernet és USB Wi-Fi mellett a robot `.50` címén SSH, valamint a bemutatóoldalon kamera és kezdetben változó térkép működött. A próba végén az Ethernet visszaállt, a beépített Wi-Fi csatlakozva maradt. Hosszabb ellenőrzéskor a `/map` új üzenetei megszűntek, ezt külön kell kivizsgálni. Valódi kábelkihúzás és kábel nélküli újraindítás még nincs igazolva. Részletek: [munkamenet-átadás](docs/11-munkamenet-atadas.md), [hálózat](docs/09-robot-halozat.md).
 
